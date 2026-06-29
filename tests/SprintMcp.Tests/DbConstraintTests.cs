@@ -18,7 +18,7 @@ public class DbConstraintTests : IDisposable
             .UseSqlite(_connection)
             .Options;
         using var ctx = new AppDbContext(_options);
-        ctx.Database.EnsureCreated();
+        DatabaseInitializer.Initialize(ctx);
     }
 
     public void Dispose() => _connection.Close();
@@ -116,5 +116,29 @@ public class DbConstraintTests : IDisposable
         ctx.Sprints.Add(new Sprint("BAD-ID"));
         var ex = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
         Assert.Contains("CHECK", ex.InnerException?.Message ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ChildRow_OrphanTicketId_ThrowsForeignKey()
+    {
+        using var ctx = Ctx();
+        var ex = Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() =>
+            ctx.Database.ExecuteSqlRaw("INSERT INTO AcceptanceCriteria (TicketId, Ordinal, Text, Satisfied, CreatedAt) VALUES ('TKT-9999', 1, 'Orphan', 0, '2024-01-01')"));
+        Assert.Contains("FOREIGN KEY", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Ticket_Delete_CascadesToChildrenAtDbLevel()
+    {
+        using var ctx = Ctx();
+        ctx.Tickets.Add(new Ticket("TKT-0040", "Cascade", "Desc"));
+        await ctx.SaveChangesAsync();
+        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion { TicketId = "TKT-0040", Ordinal = 1, Text = "Child" });
+        await ctx.SaveChangesAsync();
+
+        await ctx.Database.ExecuteSqlRawAsync("DELETE FROM Tickets WHERE Id = 'TKT-0040'");
+
+        using var verify = Ctx();
+        Assert.Empty(verify.AcceptanceCriteria.Where(c => c.TicketId == "TKT-0040").ToList());
     }
 }

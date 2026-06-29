@@ -44,7 +44,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.ToTable(t => t.HasCheckConstraint("CK_Ticket_Status", "Status IN ('open','in_progress','closed','cancelled','archived')"));
             entity.ToTable(t => t.HasCheckConstraint("CK_Ticket_Priority", "Priority IN ('low','medium','high','critical')"));
             entity.ToTable(t => t.HasCheckConstraint("CK_Ticket_Tier", "Tier IN ('trivial','regular','complex')"));
-            entity.ToTable(t => t.HasCheckConstraint("CK_Ticket_Id", "Id GLOB 'TKT-[0-9][0-9][0-9][0-9]'"));
+            entity.ToTable(t => t.HasCheckConstraint("CK_Ticket_Id", "length(Id) >= 8 AND Id GLOB 'TKT-[0-9]*'"));
         });
 
         modelBuilder.Entity<AcceptanceCriterion>(entity =>

@@ -1,11 +1,11 @@
-using System.Text.RegularExpressions;
 using SprintMcp.Application.Abstractions;
 using SprintMcp.Application.DTOs;
 using SprintMcp.Domain.Repositories;
+using SprintMcp.Domain.ValueObjects;
 
 namespace SprintMcp.Application.Services;
 
-public partial class SprintService
+public class SprintService
 {
     private readonly ITicketRepository _ticketRepo;
     private readonly ISprintRepository _sprintRepo;
@@ -49,7 +49,7 @@ public partial class SprintService
         }
         else if (title is not null)
         {
-            var created = await _ticketRepo.CreateAsync(title, title);
+            var created = await _ticketRepo.CreateAsync(title, title, Priority.FromString(priority));
             tid = created.Id;
         }
         else

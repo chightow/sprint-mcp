@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.Repositories;
+using SprintMcp.Domain.ValueObjects;
 
 namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
@@ -25,6 +26,15 @@ public class TicketRepository(AppDbContext db) : ITicketRepository
     {
         var nextId = await GetNextIdAsync();
         var ticket = new Ticket(nextId, title, description);
+        db.Tickets.Add(ticket);
+        await db.SaveChangesAsync();
+        return ticket;
+    }
+
+    public async Task<Ticket> CreateAsync(string title, string description, Priority priority)
+    {
+        var nextId = await GetNextIdAsync();
+        var ticket = new Ticket(nextId, title, description) { Priority = priority };
         db.Tickets.Add(ticket);
         await db.SaveChangesAsync();
         return ticket;

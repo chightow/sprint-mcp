@@ -19,7 +19,7 @@ public class EvalReportRepository(AppDbContext db) : IEvalReportRepository
             existing.RunId = report.RunId;
             existing.Verdict = report.Verdict;
             existing.Content = report.Content;
-            existing.MatchedRunTs = report.MatchedRunTs;
+            if (report.MatchedRunTs is not null) existing.MatchedRunTs = report.MatchedRunTs;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else

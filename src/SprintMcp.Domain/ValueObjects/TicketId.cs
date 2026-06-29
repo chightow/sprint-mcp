@@ -6,7 +6,7 @@ public partial record TicketId
 {
     private static readonly Regex ValidPattern = ValidTicketIdRegex();
 
-    [GeneratedRegex(@"^TKT-\d{4}$")]
+    [GeneratedRegex(@"^TKT-\d{4,}$")]
     private static partial Regex ValidTicketIdRegex();
 
     public string Value { get; }

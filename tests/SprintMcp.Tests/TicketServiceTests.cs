@@ -20,7 +20,7 @@ public class TicketServiceTests : IDisposable
             .UseSqlite(_connection)
             .Options;
         using var ctx = new AppDbContext(_options);
-        ctx.Database.EnsureCreated();
+        DatabaseInitializer.Initialize(ctx);
     }
 
     public void Dispose() => _connection.Close();
