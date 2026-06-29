@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SprintMcp.Application/SprintMcp.Application.csproj" />
+    <Project Path="src/SprintMcp.Domain/SprintMcp.Domain.csproj" />
+    <Project Path="src/SprintMcp.Infrastructure/SprintMcp.Infrastructure.csproj" />
+    <Project Path="src/SprintMcp.Server/SprintMcp.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SprintMcp.Tests/SprintMcp.Tests.csproj" />
+  </Folder>
+</Solution>

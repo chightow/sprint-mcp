@@ -1,27 +1,44 @@
 # sprint-mcp
 
-MCP stdio server for sprint and ticket management. Lightweight replacement for the canon ticket filesystem ceremony — the agent talks to this over JSON-RPC instead of parsing markdown.
+.NET MCP stdio server for lightweight sprint/ticket management. SQLite storage, DDD architecture.
+
+## Build & Run
+
+```bash
+dotnet run --project src/SprintMcp.Server
+dotnet build SprintMcp.slnx
+dotnet publish src/SprintMcp.Server -o ./publish
+```
+
+Storage: `.tickets/sprint.db` (SQLite via EF Core).
 
 ## Tools
 
 ### ticket
-- `get` — read ticket + all docs
-- `status` — update ticket status
-- `doc` — read/write companion docs
-- `add_criterion` — add acceptance criterion
+
+| Action | Description |
+|---|---|
+| `get` | Return ticket + nested arrays: `acceptance[]`, `decisions[]`, `test_plan[]`, `eval_report?` |
+| `status` | Update ticket status (open, in_progress, closed, cancelled, archived) |
+| `add_criterion` | Add acceptance criterion |
+| `check_criterion` | Toggle satisfied on a criterion by id or ordinal |
+| `set_plan` | Set tier/approach/files, optionally approve |
+| `add_decision` | Insert structured decision |
+| `add_test` | Add test plan item |
+| `update_test` | Update test plan item status |
+| `set_summary` | Set ticket summary prose |
+| `set_eval` | Upsert evaluation report |
 
 ### sprint
-- `start` — create ticket + plan + ACTIVE
-- `board` — list all tickets + handoff
-- `close` — validate eval-report.md, subagent-run match, pass verdict
 
-## Build
+| Action | Description |
+|---|---|
+| `start` | Create sprint row + ticket, no filesystem side-effects |
+| `board` | List tickets in active sprint + handoff + active tasks |
+| `close` | Validate eval reports, subagent-run match, stamp delivery receipt |
+
+## Tests
 
 ```bash
-go build -o sprint-mcp ./cmd/mcp-server/
-sprint-mcp                    # stdio MCP protocol
+dotnet test
 ```
-
-## Origin
-
-Extracted from [canon](https://github.com/sunitghub/canon-skills) by Sunit Joshi (MIT).

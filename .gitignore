@@ -1,2 +1,13 @@
+# Go
 /mcp-server.exe
 /mcp-server
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.vs/
+
+# DB
+.tickets/sprint.db
