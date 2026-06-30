@@ -36,6 +36,11 @@ public static class EventTypeRegistry
         "TaskComplete",
         "AskQuestions",
         "FetchWebpage",
+        "ProtocolProposal",
+        "ProtocolAccept",
+        "ProtocolReject",
+        "ProtocolAmendment",
+        "ProtocolCancel",
     };
 
     public static readonly IReadOnlySet<string> ExecutionGatedTypes = new HashSet<string>

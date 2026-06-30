@@ -132,6 +132,62 @@ public class EventProtocolTests : IAsyncLifetime
 
     #endregion
 
+    #region propose_event — protocol types
+
+    [Theory]
+    [InlineData("ProtocolProposal")]
+    [InlineData("ProtocolAccept")]
+    [InlineData("ProtocolReject")]
+    [InlineData("ProtocolAmendment")]
+    [InlineData("ProtocolCancel")]
+    public async Task ProposeEvent_ProtocolTypes_Accepted(string eventType)
+    {
+        var ctx = CreateContext();
+        await SetupSprintWithTicketAsync(ctx, "planning");
+        var svc = CreateEventService(ctx);
+        var handler = new EventToolHandler(svc);
+
+        var result = await handler.ProposeEvent(eventType, "TKT-0001", """{"protocolId":"proto_abc"}""");
+
+        Assert.False(result.IsError);
+        var data = Deserialize<ProposeEventResponse>(result);
+        Assert.True(data!.Accepted);
+        Assert.NotNull(data.EventId);
+    }
+
+    [Theory]
+    [InlineData("ProtocolProposal")]
+    [InlineData("ProtocolAccept")]
+    [InlineData("ProtocolReject")]
+    [InlineData("ProtocolAmendment")]
+    [InlineData("ProtocolCancel")]
+    public async Task ProposeEvent_ProtocolTypes_InAnyPhase_Accepted(string eventType)
+    {
+        var ctx = CreateContext();
+        await SetupSprintWithTicketAsync(ctx, "executing");
+        var svc = CreateEventService(ctx);
+        var handler = new EventToolHandler(svc);
+
+        var result = await handler.ProposeEvent(eventType, "TKT-0001", """{"protocolId":"proto_abc"}""");
+
+        Assert.False(result.IsError);
+        var data = Deserialize<ProposeEventResponse>(result);
+        Assert.True(data!.Accepted);
+        Assert.NotNull(data.EventId);
+    }
+
+    [Fact]
+    public async Task ProposeEvent_ProtocolTypes_NotExecutionGated()
+    {
+        Assert.DoesNotContain("ProtocolProposal", EventTypeRegistry.ExecutionGatedTypes);
+        Assert.DoesNotContain("ProtocolAccept", EventTypeRegistry.ExecutionGatedTypes);
+        Assert.DoesNotContain("ProtocolReject", EventTypeRegistry.ExecutionGatedTypes);
+        Assert.DoesNotContain("ProtocolAmendment", EventTypeRegistry.ExecutionGatedTypes);
+        Assert.DoesNotContain("ProtocolCancel", EventTypeRegistry.ExecutionGatedTypes);
+    }
+
+    #endregion
+
     #region propose_event — rejections
 
     [Fact]
