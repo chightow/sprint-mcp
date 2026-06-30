@@ -10,7 +10,8 @@ public static class HandlerUtils
         var json = JsonSerializer.Serialize(result);
         return new CallToolResult
         {
-            Content = [new TextContentBlock { Text = json }]
+            Content = [new TextContentBlock { Text = json }],
+            IsError = result.Status == "error"
         };
     }
 }

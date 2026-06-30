@@ -9,7 +9,7 @@ public class Ticket
     public string Description { get; private set; } = string.Empty;
     public TicketStatus Status { get; private set; } = TicketStatus.Open;
     public Priority Priority { get; private set; } = Priority.Medium;
-    public TicketTier Tier { get; set; } = TicketTier.Regular;
+    public TicketTier Tier { get; private set; } = TicketTier.Regular;
     public string? SprintId { get; set; }
     public string PlanApproach { get; set; } = string.Empty;
     public string PlanFiles { get; set; } = string.Empty;
@@ -33,12 +33,19 @@ public class Ticket
 
     public void ChangeStatus(TicketStatus newStatus)
     {
+        if (!Status.CanTransitionTo(newStatus))
+            throw new InvalidOperationException($"Cannot transition from '{Status}' to '{newStatus}'.");
         Status = newStatus;
     }
 
     public void ChangePriority(Priority newPriority)
     {
         Priority = newPriority;
+    }
+
+    public void ChangeTier(TicketTier newTier)
+    {
+        Tier = newTier;
     }
 
     public void MarkPlanApproved()

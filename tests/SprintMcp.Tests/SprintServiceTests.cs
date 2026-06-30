@@ -136,6 +136,7 @@ public class SprintServiceTests : IDisposable
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
         var ticket = tickets[0];
+        ticket.ChangeStatus(TicketStatus.InProgress);
         ticket.ChangeStatus(TicketStatus.Closed);
         await ticketRepo.UpdateAsync(ticket);
 
@@ -155,6 +156,7 @@ public class SprintServiceTests : IDisposable
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
         var ticket = tickets[0];
+        ticket.ChangeStatus(TicketStatus.InProgress);
         ticket.ChangeStatus(TicketStatus.Closed);
         await ticketRepo.UpdateAsync(ticket);
 
@@ -378,6 +380,7 @@ public class SprintServiceTests : IDisposable
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
         var ticket = tickets[0];
+        ticket.ChangeStatus(TicketStatus.InProgress);
         ticket.ChangeStatus(TicketStatus.Closed);
         await ticketRepo.UpdateAsync(ticket);
 

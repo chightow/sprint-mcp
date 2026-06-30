@@ -1,4 +1,5 @@
 PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS Sprints (
     Id          TEXT    PRIMARY KEY,

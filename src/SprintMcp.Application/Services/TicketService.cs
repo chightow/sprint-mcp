@@ -344,7 +344,7 @@ public partial class TicketService
                 TicketTier parsedTier;
                 try { parsedTier = TicketTier.FromString(tier); }
                 catch (ArgumentException ex) { return ToolResult.Error(ex.Message); }
-                ticket.Tier = parsedTier;
+                ticket.ChangeTier(parsedTier);
             }
 
             if (approach is not null)
