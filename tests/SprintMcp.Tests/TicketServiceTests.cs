@@ -58,8 +58,7 @@ public class TicketServiceTests : IDisposable
     private async Task<Sprint> SetupSprintAsync(AppDbContext ctx, string phase = "planning")
     {
         var sprintRepo = new SprintRepository(ctx);
-        var sprintId = await sprintRepo.GetNextIdAsync();
-        var sprint = await sprintRepo.CreateAsync(sprintId);
+        var sprint = await sprintRepo.CreateNextAsync();
         while (phase != "planning" && sprint.Phase.Value != phase)
             sprint.AdvancePhase();
         if (phase != "planning")

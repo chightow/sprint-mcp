@@ -179,7 +179,6 @@ public partial class TicketService
                 return ToolResult.Error($"Cannot transition from '{ticket.Status}' to '{status}'.");
 
             ticket.ChangeStatus(status);
-            ticket.UpdatedAt = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
             await _ctx.TicketRepo.UpdateAsync(ticket, ct);
 
             _ctx.Logger.LogInformation("Ticket {TicketId} status changed to {NewStatus}", ticketId, status.Value);

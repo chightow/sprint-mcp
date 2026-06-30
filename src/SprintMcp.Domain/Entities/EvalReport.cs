@@ -18,7 +18,6 @@ public class EvalReport
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ticketId, nameof(ticketId));
         ArgumentException.ThrowIfNullOrWhiteSpace(runId, nameof(runId));
-        _ = Verdict.FromString(verdict.Value);
         TicketId = ticketId;
         RunId = runId;
         Verdict = verdict;
@@ -30,7 +29,6 @@ public class EvalReport
     public void Update(string runId, Verdict verdict, string content, DateTime updatedAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(runId, nameof(runId));
-        _ = Verdict.FromString(verdict.Value);
         RunId = runId;
         Verdict = verdict;
         Content = content ?? string.Empty;

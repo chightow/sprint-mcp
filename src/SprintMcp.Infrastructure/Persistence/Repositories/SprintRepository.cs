@@ -7,6 +7,8 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class SprintRepository(AppDbContext db) : ISprintRepository
 {
+    private static readonly SemaphoreSlim _idLock = new(1, 1);
+
     public async Task<Sprint?> GetActiveAsync(CancellationToken ct = default)
     {
         return await db.Sprints.FirstOrDefaultAsync(s => s.Status == SprintStatus.Active, ct);
@@ -25,12 +27,29 @@ public class SprintRepository(AppDbContext db) : ISprintRepository
         return sprint;
     }
 
+    public async Task<Sprint> CreateNextAsync(CancellationToken ct = default)
+    {
+        await _idLock.WaitAsync(ct);
+        try
+        {
+            var id = await GetNextIdInternalAsync(ct);
+            var sprint = new Sprint(id);
+            db.Sprints.Add(sprint);
+            await db.SaveChangesAsync(ct);
+            return sprint;
+        }
+        finally
+        {
+            _idLock.Release();
+        }
+    }
+
     public async Task UpdateAsync(Sprint sprint, CancellationToken ct = default)
     {
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<string> GetNextIdAsync(CancellationToken ct = default)
+    private async Task<string> GetNextIdInternalAsync(CancellationToken ct = default)
     {
         var maxN = await db.Database
             .SqlQueryRaw<long>(

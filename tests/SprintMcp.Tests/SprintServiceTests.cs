@@ -98,10 +98,9 @@ public class SprintServiceTests : IDisposable
         using var ctx = CreateContext();
         var svc = CreateService(ctx);
         var sprintRepo = new SprintRepository(ctx);
-        var sprintId = await sprintRepo.GetNextIdAsync();
-        await sprintRepo.CreateAsync(sprintId);
+        var sprint = await sprintRepo.CreateNextAsync();
         // Advance to evaluating
-        var sprint = await sprintRepo.GetByIdAsync(sprintId);
+        sprint = await sprintRepo.GetByIdAsync(sprint.Id);
         sprint!.AdvancePhase();
         sprint.AdvancePhase();
         await sprintRepo.UpdateAsync(sprint);

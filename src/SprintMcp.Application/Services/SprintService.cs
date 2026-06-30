@@ -188,11 +188,10 @@ public class SprintService
                 return ToolResult.Error("Provide title or ticket_id");
             }
 
-            var sprintId = await _sprintRepo.GetNextIdAsync(ct);
-            await _sprintRepo.CreateAsync(sprintId, ct);
+            var sprint = await _sprintRepo.CreateNextAsync(ct);
+            var sprintId = sprint.Id;
 
             ticket.AssignToSprint(sprintId);
-            ticket.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
             await _ticketRepo.UpdateAsync(ticket, ct);
 
             await tx.CommitAsync(ct);
