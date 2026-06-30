@@ -76,7 +76,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", """{"path":"src/main.cs"}""", ["ledger:ref1"]);
+        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", """{"path":"src/main.cs"}""", "ledger:ref1");
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);

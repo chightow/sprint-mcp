@@ -13,12 +13,15 @@ public class EventToolHandler(EventService eventService)
         [Description("Event type: FileRead, FileWrite, EditString, RunTerminal, TerminalOutput, GrepSearch, FileSearch, ToolResult, Decision, TaskComplete, AskQuestions, FetchWebpage")] string event_type,
         [Description("Aggregate ID: the ticket ID being worked on, or '<sprint_id>:system' for non-ticket actions")] string aggregate_id,
         [Description("Event payload as JSON string")] string event_data,
-        [Description("Causal references to sprint-do ledger entries. Opaque strings, sprint-mcp stores without validation.")] string[]? caused_by = null,
+        [Description("Causal references to sprint-do ledger entries. Opaque strings, sprint-mcp stores without validation.")] string caused_by = "",
         CancellationToken ct = default)
     {
         try
         {
-            var result = await eventService.ProposeEventAsync(event_type, aggregate_id, event_data, caused_by, ct);
+            var parsedCausedBy = string.IsNullOrEmpty(caused_by)
+                ? []
+                : caused_by.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var result = await eventService.ProposeEventAsync(event_type, aggregate_id, event_data, parsedCausedBy, ct);
             return result.ToMcpResult();
         }
         catch (Exception ex)
