@@ -27,12 +27,14 @@ public class SprintHandler(SprintService sprintService)
         }
     }
 
-    [McpServerTool(Name = "sprint_board"), Description("View current sprint board with tickets, handoff, and active tasks.")]
-    public async Task<CallToolResult> GetBoard(CancellationToken ct = default)
+    [McpServerTool(Name = "sprint_board"), Description("View sprint board with tickets, handoff, and active tasks.")]
+    public async Task<CallToolResult> GetBoard(
+        [Description("Sprint ID. Uses active sprint if omitted.")] string? sprint_id = null,
+        CancellationToken ct = default)
     {
         try
         {
-            var result = await sprintService.GetBoardAsync(ct);
+            var result = await sprintService.GetBoardAsync(sprint_id, ct);
             return result.ToMcpResult();
         }
         catch (Exception ex)
@@ -41,14 +43,15 @@ public class SprintHandler(SprintService sprintService)
         }
     }
 
-    [McpServerTool(Name = "sprint_close"), Description("Close the active sprint. Validates tickets and eval reports first.")]
+    [McpServerTool(Name = "sprint_close"), Description("Close a sprint. Validates tickets and eval reports first.")]
     public async Task<CallToolResult> CloseSprint(
+        [Description("Sprint ID. Uses active sprint if omitted.")] string? sprint_id = null,
         [Description("Causal references to sprint-do ledger entries. Opaque strings, sprint-mcp stores without validation.")] string[]? caused_by = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await sprintService.CloseSprintAsync(caused_by, ct);
+            var result = await sprintService.CloseSprintAsync(caused_by, sprint_id, ct);
             return result.ToMcpResult();
         }
         catch (Exception ex)
@@ -59,12 +62,13 @@ public class SprintHandler(SprintService sprintService)
 
     [McpServerTool(Name = "sprint_advance_phase"), Description("Advance sprint to next phase (planning -> executing -> evaluating).")]
     public async Task<CallToolResult> AdvancePhase(
+        [Description("Sprint ID. Uses active sprint if omitted.")] string? sprint_id = null,
         [Description("Causal references to sprint-do ledger entries. Opaque strings, sprint-mcp stores without validation.")] string[]? caused_by = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await sprintService.AdvancePhaseAsync(caused_by, ct);
+            var result = await sprintService.AdvancePhaseAsync(caused_by, sprint_id, ct);
             return result.ToMcpResult();
         }
         catch (Exception ex)
@@ -79,12 +83,13 @@ public class SprintHandler(SprintService sprintService)
         [Description("In progress items")] string? in_progress = null,
         [Description("Discoveries made")] string? discoveries = null,
         [Description("Next steps")] string? next_steps = null,
+        [Description("Sprint ID. Uses active sprint if omitted.")] string? sprint_id = null,
         [Description("Causal references to sprint-do ledger entries. Opaque strings, sprint-mcp stores without validation.")] string[]? caused_by = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await sprintService.UpdateHandoffAsync(current_focus, in_progress, discoveries, next_steps, caused_by, ct);
+            var result = await sprintService.UpdateHandoffAsync(current_focus, in_progress, discoveries, next_steps, caused_by, sprint_id, ct);
             return result.ToMcpResult();
         }
         catch (Exception ex)
@@ -93,15 +98,16 @@ public class SprintHandler(SprintService sprintService)
         }
     }
 
-    [McpServerTool(Name = "sprint_add_task"), Description("Add a task reference to the active sprint.")]
+    [McpServerTool(Name = "sprint_add_task"), Description("Add a task reference to a sprint.")]
     public async Task<CallToolResult> AddTask(
         [Description("Task reference (e.g. ticket ID)")] string task_ref,
+        [Description("Sprint ID. Uses active sprint if omitted.")] string? sprint_id = null,
         [Description("Causal references to sprint-do ledger entries. Opaque strings, sprint-mcp stores without validation.")] string[]? caused_by = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await sprintService.AddActiveTaskAsync(task_ref, caused_by, ct);
+            var result = await sprintService.AddActiveTaskAsync(task_ref, caused_by, sprint_id, ct);
             return result.ToMcpResult();
         }
         catch (Exception ex)
@@ -110,15 +116,16 @@ public class SprintHandler(SprintService sprintService)
         }
     }
 
-    [McpServerTool(Name = "sprint_remove_task"), Description("Remove a task from the active sprint by its task ID.")]
+    [McpServerTool(Name = "sprint_remove_task"), Description("Remove a task from a sprint by its task ID.")]
     public async Task<CallToolResult> RemoveTask(
         [Description("Task ID to remove")] int task_id,
+        [Description("Sprint ID. Uses active sprint if omitted.")] string? sprint_id = null,
         [Description("Causal references to sprint-do ledger entries. Opaque strings, sprint-mcp stores without validation.")] string[]? caused_by = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await sprintService.RemoveActiveTaskAsync(task_id, caused_by, ct);
+            var result = await sprintService.RemoveActiveTaskAsync(task_id, caused_by, sprint_id, ct);
             return result.ToMcpResult();
         }
         catch (Exception ex)

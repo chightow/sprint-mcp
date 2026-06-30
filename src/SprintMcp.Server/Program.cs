@@ -4,13 +4,16 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using ModelContextProtocol;
 using SprintMcp.Application;
+using SprintMcp.Application.Abstractions;
 using SprintMcp.Infrastructure;
 using SprintMcp.Infrastructure.Persistence;
+using SprintMcp.Server;
 using SprintMcp.Server.Handlers;
 
 var projectRoot = FindProjectRoot(Directory.GetCurrentDirectory());
 var configuredPath = Environment.GetEnvironmentVariable("SPRINTMCP_DB_PATH");
 var dbPath = configuredPath ?? Path.Combine(projectRoot, ".tickets", "sprint.db");
+var agentId = Environment.GetEnvironmentVariable("SPRINTMCP_AGENT_ID") ?? "unknown";
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -18,6 +21,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.Configure<ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 
 builder.Services
+    .AddSingleton<IAgentContext>(_ => new AgentContext(agentId))
     .AddSingleton(projectRoot)
     .AddInfrastructure(dbPath)
     .AddApplication()

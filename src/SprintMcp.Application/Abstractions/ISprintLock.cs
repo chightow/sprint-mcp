@@ -2,7 +2,7 @@ namespace SprintMcp.Application.Abstractions;
 
 public interface ISprintLock
 {
-    Task WaitAsync(CancellationToken ct = default);
-    void Release();
-    (bool Held, DateTime Since) Snapshot();
+    Task WaitAsync(string sprintId, CancellationToken ct = default);
+    void Release(string sprintId);
+    (bool Held, DateTime Since) Snapshot(string sprintId);
 }

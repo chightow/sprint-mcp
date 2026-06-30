@@ -17,12 +17,14 @@ public class EventService
     private readonly IEventStore _eventStore;
     private readonly InvariantEngine _invariantEngine;
     private readonly TimeProvider _timeProvider;
+    private readonly IAgentContext _agentContext;
 
-    public EventService(IEventStore eventStore, InvariantEngine invariantEngine, TimeProvider timeProvider)
+    public EventService(IEventStore eventStore, InvariantEngine invariantEngine, TimeProvider timeProvider, IAgentContext agentContext)
     {
         _eventStore = eventStore;
         _invariantEngine = invariantEngine;
         _timeProvider = timeProvider;
+        _agentContext = agentContext;
     }
 
     public async Task<ToolResult> ProposeEventAsync(
@@ -50,7 +52,7 @@ public class EventService
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         var evt = new Event(
             eventType, "agent", "agent_action", aggregateId,
-            null, causedBy ?? [], now, eventDataJson, null);
+            _agentContext.AgentId, causedBy ?? [], now, eventDataJson, null);
 
         var check = await _invariantEngine.CheckAsync(evt, ct);
         if (!check.Valid)

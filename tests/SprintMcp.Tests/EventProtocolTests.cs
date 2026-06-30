@@ -47,7 +47,12 @@ public class EventProtocolTests : IAsyncLifetime
     private EventService CreateEventService(AppDbContext ctx)
     {
         var (eventStore, invariantEngine) = EventTestHelpers.CreateEventDeps(ctx);
-        return new EventService(eventStore, invariantEngine, TimeProvider.System);
+        return new EventService(eventStore, invariantEngine, TimeProvider.System, new StubAgentContext());
+    }
+
+    private record StubAgentContext : IAgentContext
+    {
+        public string AgentId => "test-agent";
     }
 
     private async Task<(Sprint sprint, Ticket ticket)> SetupSprintWithTicketAsync(AppDbContext ctx, string phase = "planning")

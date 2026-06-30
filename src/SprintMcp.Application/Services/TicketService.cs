@@ -52,17 +52,62 @@ public partial class TicketService
         return result with { EventId = evt.Id };
     }
 
-    private async Task<(ToolResult? Error, Sprint? Sprint)> RequirePhaseAsync(SprintPhase requiredPhase, CancellationToken ct)
+    private async Task<ToolResult?> RequirePhaseForTicketAsync(string ticketId, SprintPhase requiredPhase, CancellationToken ct)
     {
-        var active = await _ctx.SprintRepo.GetActiveAsync(ct);
-        if (active is null)
-            return (ToolResult.Error("No active sprint."), null);
-        if (active.Phase != requiredPhase)
-            return (ToolResult.Error($"Action requires phase '{requiredPhase}', but sprint is in phase '{active.Phase}'."), null);
-        return (null, active);
+        var ticket = await _ctx.TicketRepo.GetByIdAsync(ticketId, ct);
+        if (ticket is null)
+            return ToolResult.Error($"Ticket '{ticketId}' not found");
+
+        var sprintId = ticket.SprintId;
+        if (string.IsNullOrEmpty(sprintId))
+        {
+            var active = await _ctx.SprintRepo.GetAllActiveAsync(ct);
+            if (active.Count == 0)
+                return ToolResult.Error("Ticket not assigned to any sprint and no active sprint found");
+            if (active.Count > 1)
+                return ToolResult.Error("Ticket not assigned to any sprint and multiple active sprints exist.");
+            sprintId = active[0].Id;
+        }
+
+        var sprint = await _ctx.SprintRepo.GetByIdAsync(sprintId, ct);
+        if (sprint is null)
+            return ToolResult.Error($"Sprint '{sprintId}' not found");
+        if (sprint.Status != SprintStatus.Active)
+            return ToolResult.Error($"Sprint '{sprintId}' is not active");
+        if (sprint.Phase != requiredPhase)
+            return ToolResult.Error($"Action requires phase '{requiredPhase}', but sprint is in phase '{sprint.Phase}'.");
+        return null;
     }
 
-    public async Task<ToolResult> CreateTicketAsync(string title, string description, string priority, string? idempotencyKey = null, string[]? causedBy = null, CancellationToken ct = default)
+    private async Task<(ToolResult? Error, Sprint? Sprint)> RequirePhaseForSprintAsync(string sprintId, SprintPhase requiredPhase, CancellationToken ct)
+    {
+        var sprint = await _ctx.SprintRepo.GetByIdAsync(sprintId, ct);
+        if (sprint is null)
+            return (ToolResult.Error($"Sprint '{sprintId}' not found"), null);
+        if (sprint.Status != SprintStatus.Active)
+            return (ToolResult.Error($"Sprint '{sprintId}' is not active"), null);
+        if (sprint.Phase != requiredPhase)
+            return (ToolResult.Error($"Action requires phase '{requiredPhase}', but sprint is in phase '{sprint.Phase}'."), null);
+        return (null, sprint);
+    }
+
+    private async Task<(ToolResult? Error, Sprint? Sprint)> ResolveActiveSprintAsync(string? sprintId, SprintPhase requiredPhase, CancellationToken ct)
+    {
+        if (sprintId is not null)
+            return await RequirePhaseForSprintAsync(sprintId, requiredPhase, ct);
+
+        var active = await _ctx.SprintRepo.GetAllActiveAsync(ct);
+        if (active.Count == 0)
+            return (ToolResult.Error("No active sprint"), null);
+        if (active.Count > 1)
+            return (ToolResult.Error("Multiple active sprints. Specify sprint_id."), null);
+        var sprint = active[0];
+        if (sprint.Phase != requiredPhase)
+            return (ToolResult.Error($"Action requires phase '{requiredPhase}', but sprint is in phase '{sprint.Phase}'."), null);
+        return (null, sprint);
+    }
+
+    public async Task<ToolResult> CreateTicketAsync(string title, string description, string priority, string? idempotencyKey = null, string[]? causedBy = null, string? sprintId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(title))
             return ToolResult.Error("Title cannot be empty");
@@ -75,7 +120,7 @@ public partial class TicketService
         try { prio = Priority.FromString(priority); }
         catch (ArgumentException ex) { return ToolResult.Error(ex.Message); }
 
-        var (phaseError, active) = await RequirePhaseAsync(SprintPhase.Planning, ct);
+        var (phaseError, sprint) = await ResolveActiveSprintAsync(sprintId, SprintPhase.Planning, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -84,9 +129,9 @@ public partial class TicketService
             var cached = await _ctx.Idempotency.CheckAsync(idempotencyKey, ct);
             if (cached is not null) return cached;
 
-            var sprintTickets = await _ctx.TicketRepo.GetBySprintIdAsync(active!.Id, ct);
+            var sprintTickets = await _ctx.TicketRepo.GetBySprintIdAsync(sprint!.Id, ct);
             if (sprintTickets.Count >= MaxTicketsPerSprint)
-                return ToolResult.Error($"Sprint '{active.Id}' already has {MaxTicketsPerSprint} tickets. Cannot create more.");
+                return ToolResult.Error($"Sprint '{sprint.Id}' already has {MaxTicketsPerSprint} tickets. Cannot create more.");
 
             var ticket = await _ctx.TicketRepo.CreateAsync(title, description ?? "", prio, ct);
 
@@ -146,7 +191,7 @@ public partial class TicketService
 
     public async Task<ToolResult> UpdateStatusAsync(string ticketId, string newStatus, string[]? causedBy = null, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Executing, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -196,7 +241,7 @@ public partial class TicketService
         if (criterionText.Length > FieldLimits.CriterionTextMax)
             return ToolResult.Error($"Criterion text exceeds {FieldLimits.CriterionTextMax} characters");
 
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Planning, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -231,7 +276,7 @@ public partial class TicketService
 
     public async Task<ToolResult> CheckCriterionAsync(string ticketId, int? criterionId, int? ordinal, bool satisfied = true, string[]? causedBy = null, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Executing, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -271,7 +316,7 @@ public partial class TicketService
 
     public async Task<ToolResult> SetPlanAsync(string ticketId, string? tier, string? approach, string? files, bool approve = false, string[]? causedBy = null, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Planning, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -342,7 +387,7 @@ public partial class TicketService
         if (rationale?.Length > FieldLimits.DecisionRationaleMax)
             return ToolResult.Error($"Decision rationale exceeds {FieldLimits.DecisionRationaleMax} characters");
 
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Planning, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -376,7 +421,7 @@ public partial class TicketService
 
     public async Task<ToolResult> AddTestAsync(string ticketId, string description, string expected, string[]? causedBy = null, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Planning, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -413,7 +458,7 @@ public partial class TicketService
 
     public async Task<ToolResult> UpdateTestAsync(string ticketId, int ordinal, string status, string[]? causedBy = null, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Executing, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -451,7 +496,7 @@ public partial class TicketService
 
     public async Task<ToolResult> SetSummaryAsync(string ticketId, string summary, string[]? causedBy = null, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Evaluating, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Evaluating, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -491,7 +536,7 @@ public partial class TicketService
         if (!long.TryParse(parts[0], out var epoch))
             return ToolResult.Error($"Invalid run ID '{runId}': epoch must be numeric");
 
-        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Evaluating, ct);
+        var phaseError = await RequirePhaseForTicketAsync(ticketId, SprintPhase.Evaluating, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);

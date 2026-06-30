@@ -8,18 +8,19 @@ namespace SprintMcp.Server.Handlers;
 [McpServerToolType]
 public class TicketHandler(TicketService ticketService)
 {
-    [McpServerTool(Name = "ticket_create"), Description("Create a new ticket in the active sprint's planning phase.")]
+    [McpServerTool(Name = "ticket_create"), Description("Create a new ticket in a sprint's planning phase.")]
     public async Task<CallToolResult> CreateTicket(
         [Description("Ticket title")] string title,
         [Description("Priority: low, medium, high, critical")] string? priority = null,
         [Description("Ticket description")] string? description = null,
         [Description("Idempotency key to prevent duplicate operations")] string? idempotency_key = null,
         [Description("Causal references to sprint-do ledger entries. Opaque strings, sprint-mcp stores without validation.")] string[]? caused_by = null,
+        [Description("Sprint ID. Uses active sprint if omitted.")] string? sprint_id = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await ticketService.CreateTicketAsync(title, description ?? "", priority ?? "medium", idempotency_key, caused_by, ct);
+            var result = await ticketService.CreateTicketAsync(title, description ?? "", priority ?? "medium", idempotency_key, caused_by, sprint_id, ct);
             return result.ToMcpResult();
         }
         catch (Exception ex)

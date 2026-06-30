@@ -14,6 +14,11 @@ public class SprintRepository(AppDbContext db) : ISprintRepository
         return await db.Sprints.FirstOrDefaultAsync(s => s.Status == SprintStatus.Active, ct);
     }
 
+    public async Task<List<Sprint>> GetAllActiveAsync(CancellationToken ct = default)
+    {
+        return await db.Sprints.Where(s => s.Status == SprintStatus.Active).ToListAsync(ct);
+    }
+
     public async Task<Sprint?> GetByIdAsync(string sprintId, CancellationToken ct = default)
     {
         return await db.Sprints.FirstOrDefaultAsync(s => s.Id == sprintId, ct);

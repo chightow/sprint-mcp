@@ -1,37 +1,28 @@
+using System.Collections.Concurrent;
+
 namespace SprintMcp.Application.Abstractions;
 
 public class SprintLock : ISprintLock
 {
-    private readonly SemaphoreSlim _mutex = new(1, 1);
-    private readonly object _snapshotLock = new();
-    private bool _held;
-    private DateTime _lockAcquiredAt = DateTime.MinValue;
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+    private readonly ConcurrentDictionary<string, (bool Held, DateTime Since)> _snapshots = new();
 
-    public async Task WaitAsync(CancellationToken ct = default)
+    public async Task WaitAsync(string sprintId, CancellationToken ct = default)
     {
-        await _mutex.WaitAsync(ct);
-        lock (_snapshotLock)
-        {
-            _held = true;
-            _lockAcquiredAt = DateTime.UtcNow;
-        }
+        var sem = _locks.GetOrAdd(sprintId, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync(ct);
+        _snapshots[sprintId] = (true, DateTime.UtcNow);
     }
 
-    public void Release()
+    public void Release(string sprintId)
     {
-        lock (_snapshotLock)
-        {
-            _held = false;
-            _lockAcquiredAt = DateTime.MinValue;
-        }
-        _mutex.Release();
+        _snapshots[sprintId] = (false, DateTime.MinValue);
+        if (_locks.TryGetValue(sprintId, out var sem))
+            sem.Release();
     }
 
-    public (bool Held, DateTime Since) Snapshot()
+    public (bool Held, DateTime Since) Snapshot(string sprintId)
     {
-        lock (_snapshotLock)
-        {
-            return (_held, _lockAcquiredAt);
-        }
+        return _snapshots.TryGetValue(sprintId, out var snap) ? snap : (false, DateTime.MinValue);
     }
 }

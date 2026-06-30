@@ -87,13 +87,14 @@ public class SprintServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task StartSprint_Twice_ReturnsError()
+    public async Task StartSprint_Concurrent_AllowsMultiple()
     {
         using var ctx = CreateContext();
         var svc = CreateService(ctx);
-        await svc.StartSprintAsync("First", null, "medium");
-        var result = await svc.StartSprintAsync("Second", null, "medium");
-        Assert.Equal("error", result.Status);
+        var first = await svc.StartSprintAsync("First", null, "medium");
+        Assert.Equal("ok", first.Status);
+        var second = await svc.StartSprintAsync("Second", null, "medium");
+        Assert.Equal("ok", second.Status);
     }
 
     [Fact]
