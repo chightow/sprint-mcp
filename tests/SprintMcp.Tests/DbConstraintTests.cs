@@ -58,14 +58,8 @@ public class DbConstraintTests : IDisposable
         ctx.Tickets.Add(new Ticket("TKT-0010", "Test", "Desc"));
         await ctx.SaveChangesAsync();
 
-        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion
-        {
-            TicketId = "TKT-0010", Ordinal = 1, Text = "First"
-        });
-        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion
-        {
-            TicketId = "TKT-0010", Ordinal = 1, Text = "Duplicate"
-        });
+        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion("TKT-0010", 1, "First"));
+        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion("TKT-0010", 1, "Duplicate"));
         var ex = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
         Assert.Contains("UNIQUE", ex.InnerException?.Message ?? "", StringComparison.OrdinalIgnoreCase);
     }
@@ -148,7 +142,7 @@ public class DbConstraintTests : IDisposable
         using var ctx = Ctx();
         ctx.Tickets.Add(new Ticket("TKT-0040", "Cascade", "Desc"));
         await ctx.SaveChangesAsync();
-        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion { TicketId = "TKT-0040", Ordinal = 1, Text = "Child" });
+        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion("TKT-0040", 1, "Child"));
         await ctx.SaveChangesAsync();
 
         await ctx.Database.ExecuteSqlRawAsync("DELETE FROM Tickets WHERE Id = 'TKT-0040'");

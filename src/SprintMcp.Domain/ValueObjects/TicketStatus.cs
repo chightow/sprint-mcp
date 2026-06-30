@@ -15,7 +15,7 @@ public record TicketStatus
 
     private static readonly Dictionary<TicketStatus, HashSet<TicketStatus>> AllowedTransitions = new()
     {
-        [Open] = new() { Open, InProgress },
+        [Open] = new() { InProgress },
         [InProgress] = new() { InProgress, Closed, Cancelled },
         [Closed] = new() { Closed, Archived },
         [Cancelled] = new() { Cancelled, Archived },

@@ -48,7 +48,7 @@ public class TicketServiceTests : IDisposable
             new EvalReportRepository(ctx),
             new SprintRepository(ctx),
             checker,
-            new IdempotencyService(new IdempotencyRepository(ctx), TimeProvider.System),
+            new IdempotencyService(new IdempotencyRepository(ctx, TimeProvider.System), TimeProvider.System),
             ".",
             TimeProvider.System,
             new TicketLock());
@@ -146,10 +146,7 @@ public class TicketServiceTests : IDisposable
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var critRepo = new AcceptanceCriterionRepository(ctx);
-        var crit = await critRepo.AddAsync(new AcceptanceCriterion
-        {
-            TicketId = ticket.Id, Ordinal = 1, Text = "Must work"
-        });
+        var crit = await critRepo.AddAsync(new AcceptanceCriterion(ticket.Id, 1, "Must work"));
         var svc = CreateService(ctx);
         var result = await svc.CheckCriterionAsync(ticket.Id, crit.Id, null);
         Assert.Equal("ok", result.Status);

@@ -163,13 +163,7 @@ public class SprintServiceTests : IDisposable
         await ticketRepo.UpdateAsync(ticket);
 
         var evalRepo = new EvalReportRepository(ctx);
-        await evalRepo.UpsertAsync(new EvalReport
-        {
-            TicketId = ticket.Id,
-            RunId = "1234567890-test-run",
-            Verdict = Verdict.Pass,
-            Content = "All good"
-        });
+        await evalRepo.UpsertAsync(new EvalReport(ticket.Id, "1234567890-test-run", Verdict.Pass, "All good"));
 
         var result = await svc.CloseSprintAsync();
         Assert.Equal("ok", result.Status);
@@ -387,12 +381,8 @@ public class SprintServiceTests : IDisposable
         await ticketRepo.UpdateAsync(ticket);
 
         var evalRepo = new EvalReportRepository(ctx);
-        var evalReport = new EvalReport
+        var evalReport = new EvalReport(ticket.Id, "1234567890-test-run", Verdict.Pass, "All good")
         {
-            TicketId = ticket.Id,
-            RunId = "1234567890-test-run",
-            Verdict = Verdict.Pass,
-            Content = "All good",
             MatchedRunTs = "2024-01-01T00:00:00.0000000Z"
         };
         await evalRepo.UpsertAsync(evalReport);

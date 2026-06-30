@@ -3,19 +3,26 @@ namespace SprintMcp.Application.Abstractions;
 public class SprintLock : ISprintLock
 {
     private readonly SemaphoreSlim _mutex = new(1, 1);
+    private readonly object _snapshotLock = new();
     private DateTime _lockAcquiredAt = DateTime.MinValue;
 
     public async Task WaitAsync(CancellationToken ct = default)
     {
         await _mutex.WaitAsync(ct);
-        _lockAcquiredAt = DateTime.UtcNow;
+        lock (_snapshotLock) { _lockAcquiredAt = DateTime.UtcNow; }
     }
 
-    public void Release() => _mutex.Release();
+    public void Release()
+    {
+        lock (_snapshotLock) { _lockAcquiredAt = DateTime.MinValue; }
+        _mutex.Release();
+    }
 
     public (bool Held, DateTime Since) Snapshot()
     {
-        var held = _mutex.CurrentCount == 0;
-        return (held, _lockAcquiredAt);
+        lock (_snapshotLock)
+        {
+            return (_mutex.CurrentCount == 0, _lockAcquiredAt);
+        }
     }
 }

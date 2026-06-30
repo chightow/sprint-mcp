@@ -9,6 +9,8 @@ namespace SprintMcp.Application.Services;
 
 public partial class TicketService
 {
+    public const int MaxTicketsPerSprint = 50;
+
     private static readonly Regex RunIdPattern = RunIdRegex();
 
     [GeneratedRegex(@"^\d{1,10}-.+$")]
@@ -82,8 +84,8 @@ public partial class TicketService
             return ToolResult.Error($"Action requires phase 'planning', but sprint is in phase '{active.Phase}'.");
 
         var sprintTickets = await _ticketRepo.GetBySprintIdAsync(active.Id, ct);
-        if (sprintTickets.Count >= 50)
-            return ToolResult.Error($"Sprint '{active.Id}' already has 50 tickets. Cannot create more.");
+        if (sprintTickets.Count >= MaxTicketsPerSprint)
+            return ToolResult.Error($"Sprint '{active.Id}' already has {MaxTicketsPerSprint} tickets. Cannot create more.");
 
         await _ticketLock.WaitAsync(ct);
         try
@@ -245,13 +247,7 @@ public partial class TicketService
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
 
             var ordinal = await _criterionRepo.GetNextOrdinalAsync(ticketId, ct);
-            var criterion = new AcceptanceCriterion
-            {
-                TicketId = ticketId,
-                Ordinal = ordinal,
-                Text = criterionText,
-                Satisfied = false
-            };
+            var criterion = new AcceptanceCriterion(ticketId, ordinal, criterionText);
             await _criterionRepo.AddAsync(criterion, ct);
 
             var result = ToolResult.Ok(new Dictionary<string, object>
@@ -381,12 +377,7 @@ public partial class TicketService
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
 
-            var decision = new Decision
-            {
-                TicketId = ticketId,
-                Title = title,
-                Rationale = rationale ?? ""
-            };
+            var decision = new Decision(ticketId, title, rationale ?? "");
             await _decisionRepo.AddAsync(decision, ct);
 
             var result = ToolResult.Ok(new Dictionary<string, object>
@@ -423,13 +414,7 @@ public partial class TicketService
                 return ToolResult.Error($"Test expected value exceeds {FieldLimits.TestExpectedMax} characters");
 
             var ordinal = await _testPlanRepo.GetNextOrdinalAsync(ticketId, ct);
-            var item = new TestPlanItem
-            {
-                TicketId = ticketId,
-                Ordinal = ordinal,
-                Description = description,
-                Expected = expected ?? ""
-            };
+            var item = new TestPlanItem(ticketId, ordinal, description, expected ?? "");
             await _testPlanRepo.AddAsync(item, ct);
 
             return ToolResult.Ok(new Dictionary<string, object>
@@ -546,12 +531,8 @@ public partial class TicketService
 
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var matchedRunTs = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime.ToString("O");
-            var report = new EvalReport
+            var report = new EvalReport(ticketId, runId, parsedVerdict, content ?? "")
             {
-                TicketId = ticketId,
-                RunId = runId,
-                Verdict = parsedVerdict,
-                Content = content ?? "",
                 MatchedRunTs = matchedRunTs,
                 UpdatedAt = now
             };

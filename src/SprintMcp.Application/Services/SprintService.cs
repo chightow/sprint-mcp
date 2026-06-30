@@ -67,7 +67,7 @@ public class SprintService
 
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var handoff = await _handoffRepo.GetBySprintIdAsync(active.Id, ct)
-                ?? new SprintHandoff { SprintId = active.Id };
+                ?? new SprintHandoff(active.Id);
 
             if (currentFocus is not null) handoff.CurrentFocus = currentFocus;
             if (inProgress is not null) handoff.InProgress = inProgress;
@@ -109,12 +109,7 @@ public class SprintService
             var tasks = await _activeTaskRepo.GetBySprintIdAsync(active.Id, ct);
             var maxOrdinal = tasks.Count > 0 ? tasks.Max(t => t.Ordinal) : 0;
 
-            var task = new ActiveTask
-            {
-                SprintId = active.Id,
-                TaskRef = taskRef,
-                Ordinal = maxOrdinal + 1
-            };
+            var task = new ActiveTask(active.Id, taskRef, maxOrdinal + 1);
             await _activeTaskRepo.AddAsync(task, ct);
 
             return ToolResult.Ok(new Dictionary<string, object>

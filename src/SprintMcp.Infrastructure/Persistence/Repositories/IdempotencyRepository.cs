@@ -4,7 +4,7 @@ using SprintMcp.Domain.Repositories;
 
 namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
-public class IdempotencyRepository(AppDbContext db) : IIdempotencyRepository
+public class IdempotencyRepository(AppDbContext db, TimeProvider timeProvider) : IIdempotencyRepository
 {
     public async Task<IdempotencyRecord?> GetAsync(string key, CancellationToken ct = default)
     {
@@ -24,7 +24,7 @@ public class IdempotencyRepository(AppDbContext db) : IIdempotencyRepository
             {
                 Key = key,
                 ResultJson = resultJson,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = timeProvider.GetUtcNow().UtcDateTime
             });
         }
         await db.SaveChangesAsync(ct);
@@ -42,7 +42,7 @@ public class IdempotencyRepository(AppDbContext db) : IIdempotencyRepository
 
     public async Task PurgeExpiredAsync(TimeSpan maxAge, CancellationToken ct = default)
     {
-        var cutoff = DateTime.UtcNow - maxAge;
+        var cutoff = timeProvider.GetUtcNow().UtcDateTime - maxAge;
         var expired = await db.IdempotencyKeys
             .Where(r => r.CreatedAt < cutoff)
             .ToListAsync(ct);
