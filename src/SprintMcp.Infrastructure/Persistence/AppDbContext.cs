@@ -20,6 +20,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        var ticketIdConverter = new ValueConverter<TicketId, string>(
+            v => v.Value, v => TicketId.FromString(v));
+
+        var sprintIdConverter = new ValueConverter<SprintId, string>(
+            v => v.Value, v => SprintId.FromString(v));
+
         var statusConverter = new ValueConverter<TicketStatus, string>(
             v => v.Value, v => TicketStatus.FromString(v));
 
@@ -48,13 +54,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Ticket>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnType("TEXT");
+            entity.Property(e => e.Id).HasColumnType("TEXT").HasConversion(ticketIdConverter);
             entity.Property(e => e.Title).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Description).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Status).IsRequired().HasColumnType("TEXT").HasConversion(statusConverter);
             entity.Property(e => e.Priority).IsRequired().HasColumnType("TEXT").HasConversion(priorityConverter);
             entity.Property(e => e.Tier).IsRequired().HasColumnType("TEXT").HasConversion(tierConverter);
-            entity.Property(e => e.SprintId).HasColumnType("TEXT");
+            entity.Property(e => e.SprintId).HasColumnType("TEXT").HasConversion(sprintIdConverter);
             entity.Property(e => e.PlanApproach).HasColumnType("TEXT");
             entity.Property(e => e.PlanFiles).HasColumnType("TEXT");
             entity.Property(e => e.PlanApprovedAt).HasColumnType("TEXT");
@@ -74,7 +80,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<AcceptanceCriterion>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT").HasConversion(ticketIdConverter);
             entity.Property(e => e.Ordinal).IsRequired();
             entity.Property(e => e.Text).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Satisfied).IsRequired();
@@ -87,7 +93,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Decision>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT").HasConversion(ticketIdConverter);
             entity.Property(e => e.Title).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Rationale).HasColumnType("TEXT");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
@@ -97,7 +103,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<TestPlanItem>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT").HasConversion(ticketIdConverter);
             entity.Property(e => e.Ordinal).IsRequired();
             entity.Property(e => e.Description).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Expected).HasColumnType("TEXT");
@@ -113,7 +119,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<EvalReport>(entity =>
         {
             entity.HasKey(e => e.TicketId);
-            entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT").HasConversion(ticketIdConverter);
             entity.Property(e => e.RunId).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Verdict).IsRequired().HasColumnType("TEXT").HasConversion(verdictConverter);
             entity.Property(e => e.Content).HasColumnType("TEXT");
@@ -129,7 +135,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Sprint>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnType("TEXT");
+            entity.Property(e => e.Id).HasColumnType("TEXT").HasConversion(sprintIdConverter);
             entity.Property(e => e.Status).IsRequired().HasColumnType("TEXT").HasConversion(sprintStatusConverter);
             entity.Property(e => e.Phase).IsRequired().HasColumnType("TEXT").HasConversion(sprintPhaseConverter);
             entity.Property(e => e.StartedAt).IsRequired().HasColumnType("TEXT");
@@ -140,7 +146,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<SprintHandoff>(entity =>
         {
             entity.HasKey(e => e.SprintId);
-            entity.Property(e => e.SprintId).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.SprintId).IsRequired().HasColumnType("TEXT").HasConversion(sprintIdConverter);
             entity.Property(e => e.CurrentFocus).HasColumnType("TEXT");
             entity.Property(e => e.InProgress).HasColumnType("TEXT");
             entity.Property(e => e.Discoveries).HasColumnType("TEXT");
@@ -153,7 +159,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<ActiveTask>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.SprintId).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.SprintId).IsRequired().HasColumnType("TEXT").HasConversion(sprintIdConverter);
             entity.Property(e => e.TaskRef).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Ordinal).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");

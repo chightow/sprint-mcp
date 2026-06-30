@@ -4,7 +4,7 @@ namespace SprintMcp.Domain.Entities;
 
 public class EvalReport
 {
-    public string TicketId { get; private set; } = string.Empty;
+    public TicketId TicketId { get; private set; } = null!;
     public string RunId { get; private set; } = string.Empty;
     public Verdict Verdict { get; private set; } = Verdict.Pending;
     public string Content { get; private set; } = string.Empty;
@@ -14,9 +14,8 @@ public class EvalReport
 
     private EvalReport() { }
 
-    public EvalReport(string ticketId, string runId, Verdict verdict, string content, DateTime? matchedRunTs = null, DateTime? updatedAt = null)
+    public EvalReport(TicketId ticketId, string runId, Verdict verdict, string content, DateTime? matchedRunTs = null, DateTime? updatedAt = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(ticketId, nameof(ticketId));
         ArgumentException.ThrowIfNullOrWhiteSpace(runId, nameof(runId));
         TicketId = ticketId;
         RunId = runId;

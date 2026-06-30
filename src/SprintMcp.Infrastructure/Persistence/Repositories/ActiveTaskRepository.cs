@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.Repositories;
+using SprintMcp.Domain.ValueObjects;
 
 namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class ActiveTaskRepository(AppDbContext db) : IActiveTaskRepository
 {
-    public async Task<List<ActiveTask>> GetBySprintIdAsync(string sprintId, CancellationToken ct = default)
+    public async Task<List<ActiveTask>> GetBySprintIdAsync(SprintId sprintId, CancellationToken ct = default)
     {
         return await db.ActiveTasks
             .Where(t => t.SprintId == sprintId)
@@ -20,7 +21,7 @@ public class ActiveTaskRepository(AppDbContext db) : IActiveTaskRepository
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<bool> DeleteBySprintIdAndIdAsync(string sprintId, int id, CancellationToken ct = default)
+    public async Task<bool> DeleteBySprintIdAndIdAsync(SprintId sprintId, int id, CancellationToken ct = default)
     {
         var deleted = await db.ActiveTasks
             .Where(t => t.SprintId == sprintId && t.Id == id)

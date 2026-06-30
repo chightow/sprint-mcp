@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.Repositories;
+using SprintMcp.Domain.ValueObjects;
 
 namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class AcceptanceCriterionRepository(AppDbContext db) : IAcceptanceCriterionRepository
 {
-    public async Task<List<AcceptanceCriterion>> GetByTicketIdAsync(string ticketId, CancellationToken ct = default)
+    public async Task<List<AcceptanceCriterion>> GetByTicketIdAsync(TicketId ticketId, CancellationToken ct = default)
     {
         return await db.AcceptanceCriteria
             .Where(c => c.TicketId == ticketId)
@@ -14,13 +15,13 @@ public class AcceptanceCriterionRepository(AppDbContext db) : IAcceptanceCriteri
             .ToListAsync(ct);
     }
 
-    public async Task<AcceptanceCriterion?> GetByTicketIdAndIdAsync(string ticketId, int id, CancellationToken ct = default)
+    public async Task<AcceptanceCriterion?> GetByTicketIdAndIdAsync(TicketId ticketId, int id, CancellationToken ct = default)
     {
         return await db.AcceptanceCriteria
             .FirstOrDefaultAsync(c => c.TicketId == ticketId && c.Id == id, ct);
     }
 
-    public async Task<AcceptanceCriterion?> GetByTicketIdAndOrdinalAsync(string ticketId, int ordinal, CancellationToken ct = default)
+    public async Task<AcceptanceCriterion?> GetByTicketIdAndOrdinalAsync(TicketId ticketId, int ordinal, CancellationToken ct = default)
     {
         return await db.AcceptanceCriteria
             .FirstOrDefaultAsync(c => c.TicketId == ticketId && c.Ordinal == ordinal, ct);
@@ -38,7 +39,7 @@ public class AcceptanceCriterionRepository(AppDbContext db) : IAcceptanceCriteri
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<int> GetNextOrdinalAsync(string ticketId, CancellationToken ct = default)
+    public async Task<int> GetNextOrdinalAsync(TicketId ticketId, CancellationToken ct = default)
     {
         var maxOrdinal = await db.AcceptanceCriteria
             .Where(c => c.TicketId == ticketId)

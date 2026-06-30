@@ -95,10 +95,10 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test ticket", "Description", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.GetTicketAsync(ticket.Id);
+        var result = await svc.GetTicketAsync(ticket.Id.Value);
         Assert.Equal("ok", result.Status);
         var data = Assert.IsType<TicketDetailResponse>(result.Data);
-        Assert.Equal(ticket.Id, data.TicketId);
+        Assert.Equal(ticket.Id.Value, data.TicketId);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.UpdateStatusAsync(ticket.Id, "in_progress");
+        var result = await svc.UpdateStatusAsync(ticket.Id.Value, "in_progress");
         Assert.Equal("ok", result.Status);
         var data = Assert.IsType<TicketStatusResponse>(result.Data);
         Assert.Equal("in_progress", data.NewStatus);
@@ -123,7 +123,7 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.UpdateStatusAsync(ticket.Id, "archived");
+        var result = await svc.UpdateStatusAsync(ticket.Id.Value, "archived");
         Assert.Equal("error", result.Status);
     }
 
@@ -135,7 +135,7 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.UpdateStatusAsync(ticket.Id, "bogus");
+        var result = await svc.UpdateStatusAsync(ticket.Id.Value, "bogus");
         Assert.Equal("error", result.Status);
     }
 
@@ -147,7 +147,7 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.AddCriterionAsync(ticket.Id, "Must work");
+        var result = await svc.AddCriterionAsync(ticket.Id.Value, "Must work");
         Assert.Equal("ok", result.Status);
         var data = Assert.IsType<CriterionAddedResponse>(result.Data);
         Assert.Equal(1, data.Ordinal);
@@ -163,7 +163,7 @@ public class TicketServiceTests : IAsyncLifetime
         var critRepo = new AcceptanceCriterionRepository(ctx);
         var crit = await critRepo.AddAsync(new AcceptanceCriterion(ticket.Id, 1, "Must work"));
         var svc = CreateService(ctx);
-        var result = await svc.CheckCriterionAsync(ticket.Id, crit.Id, null);
+        var result = await svc.CheckCriterionAsync(ticket.Id.Value, crit.Id, null);
         Assert.Equal("ok", result.Status);
         var data = Assert.IsType<CriterionCheckedResponse>(result.Data);
         Assert.True(data.Satisfied);
@@ -177,13 +177,13 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.SetPlanAsync(ticket.Id, "complex", "TDD", "src/foo.cs", true);
+        var result = await svc.SetPlanAsync(ticket.Id.Value, "complex", "TDD", "src/foo.cs", true);
         Assert.Equal("ok", result.Status);
         var data = Assert.IsType<PlanSetResponse>(result.Data);
         Assert.Equal("complex", data.Tier);
         Assert.True(data.PlanApproved);
 
-        var getResult = await svc.GetTicketAsync(ticket.Id);
+        var getResult = await svc.GetTicketAsync(ticket.Id.Value);
         var getData = Assert.IsType<TicketDetailResponse>(getResult.Data);
         Assert.Equal("complex", getData.Tier);
     }
@@ -196,7 +196,7 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.AddDecisionAsync(ticket.Id, "Use SQLite", "It is simple");
+        var result = await svc.AddDecisionAsync(ticket.Id.Value, "Use SQLite", "It is simple");
         Assert.Equal("ok", result.Status);
     }
 
@@ -208,7 +208,7 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.AddTestAsync(ticket.Id, "Test the thing", "It works");
+        var result = await svc.AddTestAsync(ticket.Id.Value, "Test the thing", "It works");
         Assert.Equal("ok", result.Status);
     }
 
@@ -220,11 +220,11 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        await svc.AddTestAsync(ticket.Id, "Test", "Works");
+        await svc.AddTestAsync(ticket.Id.Value, "Test", "Works");
         sprint.AdvancePhase();
         var sprintRepo = new SprintRepository(ctx);
         await sprintRepo.UpdateAsync(sprint);
-        var result = await svc.UpdateTestAsync(ticket.Id, 1, "pass");
+        var result = await svc.UpdateTestAsync(ticket.Id.Value, 1, "pass");
         Assert.Equal("ok", result.Status);
         var data = Assert.IsType<TestUpdatedResponse>(result.Data);
         Assert.Equal("pass", data.Status);
@@ -238,9 +238,9 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.SetSummaryAsync(ticket.Id, "Done well");
+        var result = await svc.SetSummaryAsync(ticket.Id.Value, "Done well");
         Assert.Equal("ok", result.Status);
-        var getResult = await svc.GetTicketAsync(ticket.Id);
+        var getResult = await svc.GetTicketAsync(ticket.Id.Value);
         var getData = Assert.IsType<TicketDetailResponse>(getResult.Data);
         Assert.Equal("Done well", getData.Summary);
     }
@@ -253,9 +253,9 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "pass", "All good");
+        var result = await svc.SetEvalAsync(ticket.Id.Value, "1234567890-test-run", "pass", "All good");
         Assert.Equal("ok", result.Status);
-        var getResult = await svc.GetTicketAsync(ticket.Id);
+        var getResult = await svc.GetTicketAsync(ticket.Id.Value);
         var getData = Assert.IsType<TicketDetailResponse>(getResult.Data);
         Assert.NotNull(getData.EvalReport);
     }
@@ -268,7 +268,7 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "bogus", "");
+        var result = await svc.SetEvalAsync(ticket.Id.Value, "1234567890-test-run", "bogus", "");
         Assert.Equal("error", result.Status);
     }
 
@@ -280,7 +280,7 @@ public class TicketServiceTests : IAsyncLifetime
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
-        var result = await svc.SetEvalAsync(ticket.Id, "bad-run-id", "pass", "");
+        var result = await svc.SetEvalAsync(ticket.Id.Value, "bad-run-id", "pass", "");
         Assert.Equal("error", result.Status);
     }
 
@@ -419,7 +419,7 @@ public class TicketServiceTests : IAsyncLifetime
             .ReturnsAsync(false);
         var svc = CreateService(ctx, mock.Object);
 
-        var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "pass", "All good");
+        var result = await svc.SetEvalAsync(ticket.Id.Value, "1234567890-test-run", "pass", "All good");
         Assert.Equal("error", result.Status);
     }
 }

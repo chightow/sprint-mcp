@@ -407,7 +407,7 @@ public class EventProtocolTests : IAsyncLifetime
             new TicketLock(),
             Mock.Of<ILogger<TicketService>>()));
 
-        var result = await ticketSvc.UpdateStatusAsync(ticket.Id, "in_progress");
+        var result = await ticketSvc.UpdateStatusAsync(ticket.Id.Value, "in_progress");
 
         Assert.Equal("ok", result.Status);
         Assert.NotNull(result.EventId);
@@ -437,7 +437,7 @@ public class EventProtocolTests : IAsyncLifetime
             new TicketLock(),
             Mock.Of<ILogger<TicketService>>()));
 
-        var result = await ticketSvc.GetTicketAsync(ticket.Id);
+        var result = await ticketSvc.GetTicketAsync(ticket.Id.Value);
 
         Assert.Equal("ok", result.Status);
         Assert.Null(result.EventId);
@@ -467,7 +467,7 @@ public class EventProtocolTests : IAsyncLifetime
             Mock.Of<ILogger<TicketService>>()));
 
         var causedBy = new[] { "ledger:TKT-0001:abc123", "ledger:TKT-0001:def456" };
-        await ticketSvc.UpdateStatusAsync(ticket.Id, "in_progress", causedBy);
+        await ticketSvc.UpdateStatusAsync(ticket.Id.Value, "in_progress", causedBy);
 
         var events = await eventStore.GetSinceAsync(0);
         var statusEvent = events.FirstOrDefault(e => e.EventType == "TicketStatusChanged");

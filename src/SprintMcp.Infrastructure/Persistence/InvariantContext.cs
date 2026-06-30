@@ -16,7 +16,7 @@ public class InvariantContext(AppDbContext db) : IInvariantContext
     public async Task<string?> GetTicketStatusAsync(string ticketId, CancellationToken ct)
     {
         var ticket = await db.Tickets
-            .FirstOrDefaultAsync(t => t.Id == ticketId, ct);
+            .FirstOrDefaultAsync(t => t.Id == TicketId.FromString(ticketId), ct);
         return ticket?.Status.Value;
     }
 }

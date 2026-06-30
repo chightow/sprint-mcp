@@ -146,8 +146,8 @@ public class SprintServiceTests : IAsyncLifetime
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
         var ticket = tickets[0];
-        ticket.ChangeStatus(TicketStatus.InProgress);
-        ticket.ChangeStatus(TicketStatus.Closed);
+        ticket.TransitionTo(TicketStatus.InProgress);
+        ticket.TransitionTo(TicketStatus.Closed);
         await ticketRepo.UpdateAsync(ticket);
 
         var result = await svc.CloseSprintAsync();
@@ -166,8 +166,8 @@ public class SprintServiceTests : IAsyncLifetime
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
         var ticket = tickets[0];
-        ticket.ChangeStatus(TicketStatus.InProgress);
-        ticket.ChangeStatus(TicketStatus.Closed);
+        ticket.TransitionTo(TicketStatus.InProgress);
+        ticket.TransitionTo(TicketStatus.Closed);
         await ticketRepo.UpdateAsync(ticket);
 
         var evalRepo = new EvalReportRepository(ctx);
@@ -393,8 +393,8 @@ public class SprintServiceTests : IAsyncLifetime
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
         var ticket = tickets[0];
-        ticket.ChangeStatus(TicketStatus.InProgress);
-        ticket.ChangeStatus(TicketStatus.Closed);
+        ticket.TransitionTo(TicketStatus.InProgress);
+        ticket.TransitionTo(TicketStatus.Closed);
         await ticketRepo.UpdateAsync(ticket);
 
         var evalRepo = new EvalReportRepository(ctx);

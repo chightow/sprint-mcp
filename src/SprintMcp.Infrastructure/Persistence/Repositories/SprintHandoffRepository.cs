@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.Repositories;
+using SprintMcp.Domain.ValueObjects;
 
 namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class SprintHandoffRepository(AppDbContext db) : ISprintHandoffRepository
 {
-    public async Task<SprintHandoff?> GetBySprintIdAsync(string sprintId, CancellationToken ct = default)
+    public async Task<SprintHandoff?> GetBySprintIdAsync(SprintId sprintId, CancellationToken ct = default)
     {
         return await db.SprintHandoffs.FirstOrDefaultAsync(h => h.SprintId == sprintId, ct);
     }

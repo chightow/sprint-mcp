@@ -157,7 +157,7 @@ public class EventStoreTests : IAsyncLifetime
 
         var ticket = await ticketRepo.CreateAsync("Test", "", Priority.Medium);
 
-        var evt = new Event("TicketCreated", "domain", "ticket", ticket.Id,
+        var evt = new Event("TicketCreated", "domain", "ticket", ticket.Id.Value,
             null, ["ledger:ref1"], DateTime.UtcNow, "{}");
         store.Track(evt);
 

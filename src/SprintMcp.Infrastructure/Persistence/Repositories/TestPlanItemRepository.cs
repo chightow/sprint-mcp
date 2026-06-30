@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.Repositories;
+using SprintMcp.Domain.ValueObjects;
 
 namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class TestPlanItemRepository(AppDbContext db) : ITestPlanItemRepository
 {
-    public async Task<List<TestPlanItem>> GetByTicketIdAsync(string ticketId, CancellationToken ct = default)
+    public async Task<List<TestPlanItem>> GetByTicketIdAsync(TicketId ticketId, CancellationToken ct = default)
     {
         return await db.TestPlanItems
             .Where(t => t.TicketId == ticketId)
@@ -14,7 +15,7 @@ public class TestPlanItemRepository(AppDbContext db) : ITestPlanItemRepository
             .ToListAsync(ct);
     }
 
-    public async Task<TestPlanItem?> GetByTicketIdAndOrdinalAsync(string ticketId, int ordinal, CancellationToken ct = default)
+    public async Task<TestPlanItem?> GetByTicketIdAndOrdinalAsync(TicketId ticketId, int ordinal, CancellationToken ct = default)
     {
         return await db.TestPlanItems
             .FirstOrDefaultAsync(t => t.TicketId == ticketId && t.Ordinal == ordinal, ct);
@@ -32,7 +33,7 @@ public class TestPlanItemRepository(AppDbContext db) : ITestPlanItemRepository
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<int> GetNextOrdinalAsync(string ticketId, CancellationToken ct = default)
+    public async Task<int> GetNextOrdinalAsync(TicketId ticketId, CancellationToken ct = default)
     {
         var maxOrdinal = await db.TestPlanItems
             .Where(t => t.TicketId == ticketId)

@@ -4,7 +4,7 @@ namespace SprintMcp.Domain.Entities;
 
 public class Sprint
 {
-    public string Id { get; private set; } = string.Empty;
+    public SprintId Id { get; private set; } = null!;
     public SprintStatus Status { get; private set; } = SprintStatus.Active;
     public SprintPhase Phase { get; private set; } = SprintPhase.Planning;
     public DateTime StartedAt { get; private set; } = DateTime.UtcNow;
@@ -12,11 +12,13 @@ public class Sprint
 
     private Sprint() { }
 
-    public Sprint(string id)
+    public static Sprint Create(SprintId id)
     {
-        SprintId.Validate(id);
-        Id = id;
-        StartedAt = DateTime.UtcNow;
+        return new Sprint
+        {
+            Id = id,
+            StartedAt = DateTime.UtcNow
+        };
     }
 
     public void AdvancePhase()

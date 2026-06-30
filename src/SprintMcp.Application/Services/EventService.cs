@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using SprintMcp.Application.Abstractions;
 using SprintMcp.Application.DTOs;
 using SprintMcp.Domain.Entities;
@@ -11,7 +12,8 @@ public class EventService
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        Converters = { new SprintIdJsonConverter(), new TicketIdJsonConverter() }
     };
 
     private readonly IEventStore _eventStore;

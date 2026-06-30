@@ -9,7 +9,7 @@ public class TicketRepository(AppDbContext db) : ITicketRepository
 {
     private static readonly SemaphoreSlim _idLock = new(1, 1);
 
-    public async Task<Ticket?> GetByIdAsync(string ticketId, CancellationToken ct = default)
+    public async Task<Ticket?> GetByIdAsync(TicketId ticketId, CancellationToken ct = default)
     {
         return await db.Tickets.FirstOrDefaultAsync(t => t.Id == ticketId, ct);
     }
@@ -19,7 +19,7 @@ public class TicketRepository(AppDbContext db) : ITicketRepository
         return await db.Tickets.OrderBy(t => t.Id).Skip(skip).Take(take).ToListAsync(ct);
     }
 
-    public async Task<List<Ticket>> GetBySprintIdAsync(string sprintId, CancellationToken ct = default)
+    public async Task<List<Ticket>> GetBySprintIdAsync(SprintId sprintId, CancellationToken ct = default)
     {
         return await db.Tickets.Where(t => t.SprintId == sprintId).OrderBy(t => t.Id).ToListAsync(ct);
     }
@@ -29,9 +29,9 @@ public class TicketRepository(AppDbContext db) : ITicketRepository
         await _idLock.WaitAsync(ct);
         try
         {
-            var nextId = await GetNextIdAsync(ct);
-            var ticket = new Ticket(nextId, title, description);
-            ticket.ChangePriority(priority);
+            var nextIdStr = await GetNextIdAsync(ct);
+            var ticket = Ticket.Create(TicketId.FromString(nextIdStr), title, description);
+            ticket.PrioritizeAs(priority);
             db.Tickets.Add(ticket);
             await db.SaveChangesAsync(ct);
             return ticket;

@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.Repositories;
+using SprintMcp.Domain.ValueObjects;
 
 namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class EvalReportRepository(AppDbContext db) : IEvalReportRepository
 {
-    public async Task<EvalReport?> GetByTicketIdAsync(string ticketId, CancellationToken ct = default)
+    public async Task<EvalReport?> GetByTicketIdAsync(TicketId ticketId, CancellationToken ct = default)
     {
         return await db.EvalReports.FirstOrDefaultAsync(e => e.TicketId == ticketId, ct);
     }

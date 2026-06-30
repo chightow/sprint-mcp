@@ -1,8 +1,10 @@
+using SprintMcp.Domain.ValueObjects;
+
 namespace SprintMcp.Application.Abstractions;
 
 public interface ISprintLock
 {
-    Task WaitAsync(string sprintId, CancellationToken ct = default);
-    void Release(string sprintId);
-    (bool Held, DateTime Since) Snapshot(string sprintId);
+    Task WaitAsync(SprintId sprintId, CancellationToken ct = default);
+    void Release(SprintId sprintId);
+    (bool Held, DateTime Since) Snapshot(SprintId sprintId);
 }

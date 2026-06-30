@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SprintMcp.Domain.Entities;
+using SprintMcp.Domain.ValueObjects;
 using SprintMcp.Infrastructure.Persistence;
 
 namespace SprintMcp.Tests;
@@ -64,11 +65,11 @@ public class DbConstraintTests : IAsyncLifetime
     public async Task AcceptanceCriteria_DuplicateOrdinal_Throws()
     {
         using var ctx = Ctx();
-        ctx.Tickets.Add(new Ticket("TKT-0010", "Test", "Desc"));
+        ctx.Tickets.Add(Ticket.Create(TicketId.FromString("TKT-0010"), "Test", "Desc"));
         await ctx.SaveChangesAsync();
 
-        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion("TKT-0010", 1, "First"));
-        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion("TKT-0010", 1, "Duplicate"));
+        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion(TicketId.FromString("TKT-0010"), 1, "First"));
+        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion(TicketId.FromString("TKT-0010"), 1, "Duplicate"));
         var ex = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
         Assert.Contains("UNIQUE", ex.InnerException?.Message ?? "", StringComparison.OrdinalIgnoreCase);
     }
@@ -77,7 +78,7 @@ public class DbConstraintTests : IAsyncLifetime
     public async Task TestPlanItem_BadStatus_Throws()
     {
         using var ctx = Ctx();
-        ctx.Tickets.Add(new Ticket("TKT-0020", "Test", "Desc"));
+        ctx.Tickets.Add(Ticket.Create(TicketId.FromString("TKT-0020"), "Test", "Desc"));
         await ctx.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<SqliteException>(() =>
@@ -89,7 +90,7 @@ public class DbConstraintTests : IAsyncLifetime
     public async Task EvalReport_BadVerdict_Throws()
     {
         using var ctx = Ctx();
-        ctx.Tickets.Add(new Ticket("TKT-0030", "Test", "Desc"));
+        ctx.Tickets.Add(Ticket.Create(TicketId.FromString("TKT-0030"), "Test", "Desc"));
         await ctx.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<SqliteException>(() =>
@@ -101,7 +102,7 @@ public class DbConstraintTests : IAsyncLifetime
     public async Task EvalReport_ShortRunId_Throws()
     {
         using var ctx = Ctx();
-        ctx.Tickets.Add(new Ticket("TKT-0031", "Test", "Desc"));
+        ctx.Tickets.Add(Ticket.Create(TicketId.FromString("TKT-0031"), "Test", "Desc"));
         await ctx.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<SqliteException>(() =>
@@ -149,14 +150,14 @@ public class DbConstraintTests : IAsyncLifetime
     public async Task Ticket_Delete_CascadesToChildrenAtDbLevel()
     {
         using var ctx = Ctx();
-        ctx.Tickets.Add(new Ticket("TKT-0040", "Cascade", "Desc"));
+        ctx.Tickets.Add(Ticket.Create(TicketId.FromString("TKT-0040"), "Cascade", "Desc"));
         await ctx.SaveChangesAsync();
-        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion("TKT-0040", 1, "Child"));
+        ctx.AcceptanceCriteria.Add(new AcceptanceCriterion(TicketId.FromString("TKT-0040"), 1, "Child"));
         await ctx.SaveChangesAsync();
 
         await ctx.Database.ExecuteSqlRawAsync("DELETE FROM Tickets WHERE Id = 'TKT-0040'");
 
         using var verify = Ctx();
-        Assert.Empty(verify.AcceptanceCriteria.Where(c => c.TicketId == "TKT-0040").ToList());
+        Assert.Empty(verify.AcceptanceCriteria.Where(c => c.TicketId == TicketId.FromString("TKT-0040")).ToList());
     }
 }

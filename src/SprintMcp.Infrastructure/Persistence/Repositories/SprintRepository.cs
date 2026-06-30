@@ -19,14 +19,14 @@ public class SprintRepository(AppDbContext db) : ISprintRepository
         return await db.Sprints.Where(s => s.Status == SprintStatus.Active).ToListAsync(ct);
     }
 
-    public async Task<Sprint?> GetByIdAsync(string sprintId, CancellationToken ct = default)
+    public async Task<Sprint?> GetByIdAsync(SprintId sprintId, CancellationToken ct = default)
     {
         return await db.Sprints.FirstOrDefaultAsync(s => s.Id == sprintId, ct);
     }
 
-    public async Task<Sprint> CreateAsync(string id, CancellationToken ct = default)
+    public async Task<Sprint> CreateAsync(SprintId id, CancellationToken ct = default)
     {
-        var sprint = new Sprint(id);
+        var sprint = Sprint.Create(id);
         db.Sprints.Add(sprint);
         await db.SaveChangesAsync(ct);
         return sprint;
@@ -37,8 +37,8 @@ public class SprintRepository(AppDbContext db) : ISprintRepository
         await _idLock.WaitAsync(ct);
         try
         {
-            var id = await GetNextIdInternalAsync(ct);
-            var sprint = new Sprint(id);
+            var idStr = await GetNextIdInternalAsync(ct);
+            var sprint = Sprint.Create(SprintId.FromString(idStr));
             db.Sprints.Add(sprint);
             await db.SaveChangesAsync(ct);
             return sprint;

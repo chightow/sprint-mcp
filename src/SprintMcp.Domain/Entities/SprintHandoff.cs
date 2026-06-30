@@ -4,7 +4,7 @@ namespace SprintMcp.Domain.Entities;
 
 public class SprintHandoff
 {
-    public string SprintId { get; private set; } = string.Empty;
+    public SprintId SprintId { get; private set; } = null!;
     public string CurrentFocus { get; private set; } = string.Empty;
     public string InProgress { get; private set; } = string.Empty;
     public string Discoveries { get; private set; } = string.Empty;
@@ -13,9 +13,8 @@ public class SprintHandoff
 
     private SprintHandoff() { }
 
-    public SprintHandoff(string sprintId)
+    public SprintHandoff(SprintId sprintId)
     {
-        ValueObjects.SprintId.Validate(sprintId);
         SprintId = sprintId;
     }
 
