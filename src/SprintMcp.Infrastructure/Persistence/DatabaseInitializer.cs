@@ -8,8 +8,7 @@ public static class DatabaseInitializer
     public static async Task InitializeAsync(AppDbContext db)
     {
         var assembly = Assembly.GetExecutingAssembly();
-        var resourceName = assembly.GetManifestResourceNames()
-            .First(n => n.EndsWith("schema.sql", StringComparison.OrdinalIgnoreCase));
+        const string resourceName = "SprintMcp.Infrastructure.Persistence.schema.sql";
 
         using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' not found.");

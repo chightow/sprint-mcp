@@ -8,7 +8,7 @@ namespace SprintMcp.Application.Services;
 public class IdempotencyService
 {
     private static readonly TimeSpan Ttl = TimeSpan.FromHours(24);
-    private static int _purgeCounter;
+    private int _purgeCounter;
 
     private readonly IIdempotencyRepository _repo;
     private readonly TimeProvider _timeProvider;

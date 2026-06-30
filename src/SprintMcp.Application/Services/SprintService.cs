@@ -165,11 +165,11 @@ public class SprintService
         await _sprintLock.WaitAsync(ct);
         try
         {
-            await using var tx = await _txManager.BeginAsync(ct);
-
             var active = await _sprintRepo.GetActiveAsync(ct);
             if (active is not null)
                 return ToolResult.Error("An active sprint already exists. Close it first.");
+
+            await using var tx = await _txManager.BeginAsync(ct);
 
             Ticket ticket;
             string tid;

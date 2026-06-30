@@ -38,8 +38,8 @@ public class SubagentRunChecker : ISubagentRunChecker
         if (!File.Exists(path))
             return false;
 
-        var lines = await File.ReadAllLinesAsync(path, ct);
-        foreach (var line in lines)
+        using var reader = new StreamReader(path);
+        while (await reader.ReadLineAsync(ct) is { } line)
         {
             var trimmed = line.Trim();
             if (trimmed.Length == 0) continue;
@@ -68,8 +68,6 @@ public class SubagentRunChecker : ISubagentRunChecker
 
     private static long? TryParseTimestamp(string ts)
     {
-        var normalized = ts.EndsWith('Z') ? ts[..^1] + "+00:00" : ts;
-
         string[] formats =
         [
             "yyyy-MM-ddTHH:mm:ss.fffffffK",
@@ -79,9 +77,9 @@ public class SubagentRunChecker : ISubagentRunChecker
 
         foreach (var fmt in formats)
         {
-            if (DateTime.TryParseExact(normalized, fmt, CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal, out var dt))
-                return new DateTimeOffset(dt).ToUnixTimeSeconds();
+            if (DateTimeOffset.TryParseExact(ts, fmt, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal, out var dto))
+                return dto.ToUnixTimeSeconds();
         }
         return null;
     }
