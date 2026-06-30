@@ -8,9 +8,9 @@ namespace SprintMcp.Server.Handlers;
 [McpServerToolType]
 public class SprintHandler(SprintService sprintService)
 {
-    [McpServerTool(Name = "sprint"), Description(@"Manage sprints. Actions: start, board, close, update_handoff, add_task, remove_task.")]
+    [McpServerTool(Name = "sprint"), Description(@"Manage sprints. Actions: start, board, close, advance_phase, update_handoff, add_task, remove_task.")]
     public async Task<CallToolResult> HandleSprint(
-        [Description("Action: start, board, close, update_handoff, add_task, remove_task")] string action,
+        [Description("Action: start, board, close, advance_phase, update_handoff, add_task, remove_task")] string action,
         [Description("Title for new sprint ticket")] string? title = null,
         [Description("Existing ticket ID to resume")] string? ticket_id = null,
         [Description("Priority: low, medium, high, critical")] string? priority = null,
@@ -29,6 +29,7 @@ public class SprintHandler(SprintService sprintService)
                 "start" => await sprintService.StartSprintAsync(title, ticket_id, priority ?? "medium", ct),
                 "board" => await sprintService.GetBoardAsync(ct),
                 "close" => await sprintService.CloseSprintAsync(ct),
+                "advance_phase" => await sprintService.AdvancePhaseAsync(ct),
                 "update_handoff" => await sprintService.UpdateHandoffAsync(current_focus, in_progress, discoveries, next_steps, ct),
                 "add_task" => await sprintService.AddActiveTaskAsync(task_ref ?? "", ct),
                 "remove_task" => await sprintService.RemoveActiveTaskAsync(task_id ?? 0, ct),

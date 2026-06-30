@@ -5,9 +5,9 @@ using Moq;
 using SprintMcp.Application.Abstractions;
 using SprintMcp.Application.Services;
 using SprintMcp.Domain.Entities;
+using SprintMcp.Domain.ValueObjects;
 using SprintMcp.Infrastructure.Persistence;
 using SprintMcp.Infrastructure.Persistence.Repositories;
-
 
 namespace SprintMcp.Tests;
 
@@ -52,6 +52,14 @@ public class SprintServiceTests : IDisposable
             ".");
     }
 
+    private async Task AdvanceToEvaluating(SprintService svc)
+    {
+        var r1 = await svc.AdvancePhaseAsync();
+        Assert.Equal("ok", r1.Status);
+        var r2 = await svc.AdvancePhaseAsync();
+        Assert.Equal("ok", r2.Status);
+    }
+
     [Fact]
     public async Task StartSprint_CreatesSprintAndTicket()
     {
@@ -88,7 +96,14 @@ public class SprintServiceTests : IDisposable
         using var ctx = CreateContext();
         var svc = CreateService(ctx);
         var sprintRepo = new SprintRepository(ctx);
-        await sprintRepo.CreateAsync("SPRINT-0001");
+        var sprintId = await sprintRepo.GetNextIdAsync();
+        await sprintRepo.CreateAsync(sprintId);
+        // Advance to evaluating
+        var sprint = await sprintRepo.GetByIdAsync(sprintId);
+        sprint!.AdvancePhase();
+        sprint.AdvancePhase();
+        await sprintRepo.UpdateAsync(sprint);
+
         var result = await svc.CloseSprintAsync();
         Assert.Equal("error", result.Status);
     }
@@ -99,6 +114,7 @@ public class SprintServiceTests : IDisposable
         using var ctx = CreateContext();
         var svc = CreateService(ctx);
         await svc.StartSprintAsync("My ticket", null, "medium");
+        await AdvanceToEvaluating(svc);
 
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
@@ -115,11 +131,12 @@ public class SprintServiceTests : IDisposable
         using var ctx = CreateContext();
         var svc = CreateService(ctx);
         await svc.StartSprintAsync("My ticket", null, "medium");
+        await AdvanceToEvaluating(svc);
 
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
         var ticket = tickets[0];
-        ticket.ChangeStatus(SprintMcp.Domain.ValueObjects.TicketStatus.Closed);
+        ticket.ChangeStatus(TicketStatus.Closed);
         await ticketRepo.UpdateAsync(ticket);
 
         var result = await svc.CloseSprintAsync();
@@ -133,11 +150,12 @@ public class SprintServiceTests : IDisposable
         using var ctx = CreateContext();
         var svc = CreateService(ctx);
         await svc.StartSprintAsync("My ticket", null, "medium");
+        await AdvanceToEvaluating(svc);
 
         var ticketRepo = new TicketRepository(ctx);
         var tickets = await ticketRepo.GetAllAsync();
         var ticket = tickets[0];
-        ticket.ChangeStatus(SprintMcp.Domain.ValueObjects.TicketStatus.Closed);
+        ticket.ChangeStatus(TicketStatus.Closed);
         await ticketRepo.UpdateAsync(ticket);
 
         var evalRepo = new EvalReportRepository(ctx);
@@ -145,7 +163,7 @@ public class SprintServiceTests : IDisposable
         {
             TicketId = ticket.Id,
             RunId = "1234567890-test-run",
-            Verdict = SprintMcp.Domain.ValueObjects.Verdict.Pass,
+            Verdict = Verdict.Pass,
             Content = "All good"
         });
 
@@ -153,14 +171,65 @@ public class SprintServiceTests : IDisposable
         Assert.Equal("ok", result.Status);
         Assert.Contains("closed successfully", (string)result.Data["message"]);
 
-        // Verify MatchedRunTs was stamped
         var report = await evalRepo.GetByTicketIdAsync(ticket.Id);
         Assert.NotNull(report!.MatchedRunTs);
 
-        // Verify sprint is closed
         var sprintRepo = new SprintRepository(ctx);
         var sprint = await sprintRepo.GetActiveAsync();
         Assert.Null(sprint);
+    }
+
+    [Fact]
+    public async Task CloseSprint_WrongPhase_ReturnsError()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        await svc.StartSprintAsync("My ticket", null, "medium");
+
+        var result = await svc.CloseSprintAsync();
+        Assert.Equal("error", result.Status);
+        Assert.Contains("evaluating", result.Message ?? "");
+    }
+
+    [Fact]
+    public async Task AdvancePhase_PlanningToExecuting()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        await svc.StartSprintAsync("Test", null, "medium");
+
+        var result = await svc.AdvancePhaseAsync();
+        Assert.Equal("ok", result.Status);
+
+        var board = await svc.GetBoardAsync();
+        Assert.Equal("executing", board.Data["phase"]);
+    }
+
+    [Fact]
+    public async Task AdvancePhase_ExecutingToEvaluating()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        await svc.StartSprintAsync("Test", null, "medium");
+        await svc.AdvancePhaseAsync();
+
+        var result = await svc.AdvancePhaseAsync();
+        Assert.Equal("ok", result.Status);
+
+        var board = await svc.GetBoardAsync();
+        Assert.Equal("evaluating", board.Data["phase"]);
+    }
+
+    [Fact]
+    public async Task AdvancePhase_Evaluating_ReturnsError()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        await svc.StartSprintAsync("Test", null, "medium");
+        await AdvanceToEvaluating(svc);
+
+        var result = await svc.AdvancePhaseAsync();
+        Assert.Equal("error", result.Status);
     }
 
     [Fact]
@@ -182,6 +251,19 @@ public class SprintServiceTests : IDisposable
         var result = await svc.GetBoardAsync();
         Assert.Equal("ok", result.Status);
         Assert.NotNull(result.Data["tickets"]);
+    }
+
+    [Fact]
+    public async Task GetBoard_IncludesLockState()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        await svc.StartSprintAsync("Board ticket", null, "low");
+
+        var result = await svc.GetBoardAsync();
+        Assert.Equal("ok", result.Status);
+        Assert.Contains("lock_held", result.Data);
+        Assert.Contains("lock_held_since", result.Data);
     }
 
     [Fact]
@@ -283,5 +365,45 @@ public class SprintServiceTests : IDisposable
         var result = await svc.RemoveActiveTaskAsync(taskId);
         Assert.Equal("ok", result.Status);
         Assert.Equal(taskId, result.Data["removed_task_id"]);
+    }
+
+    [Fact]
+    public async Task CloseSprint_WithAlreadyMatchedRunTs_SkipsSubagentCheck()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        await svc.StartSprintAsync("My ticket", null, "medium");
+        await AdvanceToEvaluating(svc);
+
+        var ticketRepo = new TicketRepository(ctx);
+        var tickets = await ticketRepo.GetAllAsync();
+        var ticket = tickets[0];
+        ticket.ChangeStatus(TicketStatus.Closed);
+        await ticketRepo.UpdateAsync(ticket);
+
+        var evalRepo = new EvalReportRepository(ctx);
+        var evalReport = new EvalReport
+        {
+            TicketId = ticket.Id,
+            RunId = "1234567890-test-run",
+            Verdict = Verdict.Pass,
+            Content = "All good",
+            MatchedRunTs = "2024-01-01T00:00:00.0000000Z"
+        };
+        await evalRepo.UpsertAsync(evalReport);
+
+        // Subagent check would return false, but MatchedRunTs already set → skipped
+        var mock = new Mock<ISubagentRunChecker>();
+        mock.Setup(m => m.CheckRunAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var svcWithMock = CreateService(ctx, mock.Object);
+
+        var result = await svcWithMock.CloseSprintAsync();
+        Assert.Equal("ok", result.Status);
+        Assert.Contains("closed successfully", (string)result.Data["message"]);
+
+        var sprintRepo = new SprintRepository(ctx);
+        var active = await sprintRepo.GetActiveAsync();
+        Assert.Null(active);
     }
 }

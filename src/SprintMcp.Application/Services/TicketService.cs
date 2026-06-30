@@ -1,5 +1,7 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using SprintMcp.Application.Abstractions;
 using SprintMcp.Application.DTOs;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.Repositories;
@@ -11,6 +13,7 @@ public partial class TicketService
 {
     private static readonly SemaphoreSlim _mutex = new(1, 1);
     private static readonly Regex RunIdPattern = RunIdRegex();
+    private static readonly TimeSpan IdempotencyTtl = TimeSpan.FromHours(24);
 
     [GeneratedRegex(@"^\d{1,10}-.+$")]
     private static partial Regex RunIdRegex();
@@ -20,12 +23,75 @@ public partial class TicketService
     private readonly IDecisionRepository _decisionRepo;
     private readonly ITestPlanItemRepository _testPlanRepo;
     private readonly IEvalReportRepository _evalReportRepo;
+    private readonly ISprintRepository _sprintRepo;
+    private readonly ISubagentRunChecker _runChecker;
+    private readonly IIdempotencyRepository _idempotencyRepo;
     private readonly ILogger<TicketService> _logger;
+    private readonly string _projectRoot;
 
-    public async Task<ToolResult> CreateTicketAsync(string title, string description, string priority, CancellationToken ct = default)
+    public TicketService(
+        ITicketRepository ticketRepo,
+        IAcceptanceCriterionRepository criterionRepo,
+        IDecisionRepository decisionRepo,
+        ITestPlanItemRepository testPlanRepo,
+        IEvalReportRepository evalReportRepo,
+        ISprintRepository sprintRepo,
+        ISubagentRunChecker runChecker,
+        IIdempotencyRepository idempotencyRepo,
+        ILogger<TicketService> logger,
+        string projectRoot)
     {
+        _ticketRepo = ticketRepo;
+        _criterionRepo = criterionRepo;
+        _decisionRepo = decisionRepo;
+        _testPlanRepo = testPlanRepo;
+        _evalReportRepo = evalReportRepo;
+        _sprintRepo = sprintRepo;
+        _runChecker = runChecker;
+        _idempotencyRepo = idempotencyRepo;
+        _logger = logger;
+        _projectRoot = projectRoot;
+    }
+
+    private async Task<ToolResult?> RequirePhaseAsync(string requiredPhase, CancellationToken ct)
+    {
+        var active = await _sprintRepo.GetActiveAsync(ct);
+        if (active is null)
+            return ToolResult.Error("No active sprint.");
+        if (active.Phase.Value != requiredPhase)
+            return ToolResult.Error($"Action requires phase '{requiredPhase}', but sprint is in phase '{active.Phase}'.");
+        return null;
+    }
+
+    private async Task<ToolResult?> CheckIdempotencyAsync(string? key, CancellationToken ct)
+    {
+        if (key is null) return null;
+        var cached = await _idempotencyRepo.GetAsync(key, ct);
+        if (cached is null) return null;
+        if (DateTime.UtcNow - cached.CreatedAt < IdempotencyTtl)
+            return JsonSerializer.Deserialize<ToolResult>(cached.ResultJson);
+        await _idempotencyRepo.DeleteAsync(key, ct);
+        return null;
+    }
+
+    private async Task StoreIdempotencyAsync(string? key, ToolResult result, CancellationToken ct)
+    {
+        if (key is null) return;
+        var json = JsonSerializer.Serialize(result);
+        await _idempotencyRepo.StoreAsync(key, json, ct);
+    }
+
+    public async Task<ToolResult> CreateTicketAsync(string title, string description, string priority, string? idempotencyKey = null, CancellationToken ct = default)
+    {
+        var cached = await CheckIdempotencyAsync(idempotencyKey, ct);
+        if (cached is not null) return cached;
+
         if (string.IsNullOrWhiteSpace(title))
             return ToolResult.Error("Title cannot be empty");
+        if (title.Length > FieldLimits.TitleMax)
+            return ToolResult.Error($"Title exceeds {FieldLimits.TitleMax} characters");
+        if (description?.Length > FieldLimits.DescriptionMax)
+            return ToolResult.Error($"Description exceeds {FieldLimits.DescriptionMax} characters");
 
         Priority prio;
         try { prio = Priority.FromString(priority); }
@@ -34,13 +100,25 @@ public partial class TicketService
         await _mutex.WaitAsync(ct);
         try
         {
+            var active = await _sprintRepo.GetActiveAsync(ct);
+            if (active is null)
+                return ToolResult.Error("No active sprint.");
+            if (active.Phase.Value != "planning")
+                return ToolResult.Error($"Action requires phase 'planning', but sprint is in phase '{active.Phase}'.");
+
+            var sprintTickets = await _ticketRepo.GetBySprintIdAsync(active.Id, ct);
+            if (sprintTickets.Count >= 50)
+                return ToolResult.Error($"Sprint '{active.Id}' already has 50 tickets. Cannot create more.");
+
             var ticket = await _ticketRepo.CreateAsync(title, description ?? "", prio, ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
+            var result = ToolResult.Ok(new Dictionary<string, object>
             {
                 ["ticket_id"] = ticket.Id,
                 ["title"] = ticket.Title
             });
+            await StoreIdempotencyAsync(idempotencyKey, result, ct);
+            return result;
         }
         finally
         {
@@ -64,22 +142,6 @@ public partial class TicketService
                 ["sprint_id"] = t.SprintId ?? ""
             }).ToList<object>()
         });
-    }
-
-    public TicketService(
-        ITicketRepository ticketRepo,
-        IAcceptanceCriterionRepository criterionRepo,
-        IDecisionRepository decisionRepo,
-        ITestPlanItemRepository testPlanRepo,
-        IEvalReportRepository evalReportRepo,
-        ILogger<TicketService> logger)
-    {
-        _ticketRepo = ticketRepo;
-        _criterionRepo = criterionRepo;
-        _decisionRepo = decisionRepo;
-        _testPlanRepo = testPlanRepo;
-        _evalReportRepo = evalReportRepo;
-        _logger = logger;
     }
 
     public async Task<ToolResult> GetTicketAsync(string ticketId, CancellationToken ct = default)
@@ -144,6 +206,9 @@ public partial class TicketService
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("executing", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
@@ -159,15 +224,8 @@ public partial class TicketService
                     ["new_status"] = status.Value
                 });
 
-            var invalid = (ticket.Status.Value, status.Value) switch
-            {
-                ("closed", not "archived") => "Cannot leave closed",
-                ("cancelled", not "archived") => "Cannot leave cancelled",
-                ("archived", _) => "Archived tickets are frozen",
-                _ => null
-            };
-            if (invalid is not null)
-                return ToolResult.Error(invalid);
+            if (!ticket.Status.CanTransitionTo(status))
+                return ToolResult.Error($"Cannot transition from '{ticket.Status}' to '{status}'.");
 
             ticket.ChangeStatus(status);
             await _ticketRepo.UpdateAsync(ticket, ct);
@@ -184,17 +242,25 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> AddCriterionAsync(string ticketId, string criterionText, CancellationToken ct = default)
+    public async Task<ToolResult> AddCriterionAsync(string ticketId, string criterionText, string? idempotencyKey = null, CancellationToken ct = default)
     {
+        var cached = await CheckIdempotencyAsync(idempotencyKey, ct);
+        if (cached is not null) return cached;
+
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("planning", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
 
             if (string.IsNullOrWhiteSpace(criterionText))
                 return ToolResult.Error("Criterion text cannot be empty");
+            if (criterionText.Length > FieldLimits.CriterionTextMax)
+                return ToolResult.Error($"Criterion text exceeds {FieldLimits.CriterionTextMax} characters");
 
             var ordinal = await _criterionRepo.GetNextOrdinalAsync(ticketId, ct);
             var criterion = new AcceptanceCriterion
@@ -206,12 +272,14 @@ public partial class TicketService
             };
             await _criterionRepo.AddAsync(criterion, ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
+            var result = ToolResult.Ok(new Dictionary<string, object>
             {
                 ["ticket_id"] = ticketId,
                 ["criterion"] = criterionText,
                 ["ordinal"] = ordinal
             });
+            await StoreIdempotencyAsync(idempotencyKey, result, ct);
+            return result;
         }
         finally
         {
@@ -224,6 +292,9 @@ public partial class TicketService
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("executing", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
@@ -261,6 +332,9 @@ public partial class TicketService
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("planning", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
@@ -273,8 +347,18 @@ public partial class TicketService
                 ticket.Tier = parsedTier;
             }
 
-            if (approach is not null) ticket.PlanApproach = approach;
-            if (files is not null) ticket.PlanFiles = files;
+            if (approach is not null)
+            {
+                if (approach.Length > FieldLimits.PlanApproachMax)
+                    return ToolResult.Error($"Plan approach exceeds {FieldLimits.PlanApproachMax} characters");
+                ticket.PlanApproach = approach;
+            }
+            if (files is not null)
+            {
+                if (files.Length > FieldLimits.PlanFilesMax)
+                    return ToolResult.Error($"Plan files exceeds {FieldLimits.PlanFilesMax} characters");
+                ticket.PlanFiles = files;
+            }
             if (approve) ticket.MarkPlanApproved();
 
             await _ticketRepo.UpdateAsync(ticket, ct);
@@ -292,17 +376,27 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> AddDecisionAsync(string ticketId, string title, string rationale, CancellationToken ct = default)
+    public async Task<ToolResult> AddDecisionAsync(string ticketId, string title, string rationale, string? idempotencyKey = null, CancellationToken ct = default)
     {
+        var cached = await CheckIdempotencyAsync(idempotencyKey, ct);
+        if (cached is not null) return cached;
+
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("planning", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
 
             if (string.IsNullOrWhiteSpace(title))
                 return ToolResult.Error("Decision title cannot be empty");
+            if (title.Length > FieldLimits.DecisionTitleMax)
+                return ToolResult.Error($"Decision title exceeds {FieldLimits.DecisionTitleMax} characters");
+            if (rationale?.Length > FieldLimits.DecisionRationaleMax)
+                return ToolResult.Error($"Decision rationale exceeds {FieldLimits.DecisionRationaleMax} characters");
 
             var decision = new Decision
             {
@@ -312,11 +406,13 @@ public partial class TicketService
             };
             await _decisionRepo.AddAsync(decision, ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
+            var result = ToolResult.Ok(new Dictionary<string, object>
             {
                 ["ticket_id"] = ticketId,
                 ["decision"] = title
             });
+            await StoreIdempotencyAsync(idempotencyKey, result, ct);
+            return result;
         }
         finally
         {
@@ -329,12 +425,19 @@ public partial class TicketService
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("planning", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
 
             if (string.IsNullOrWhiteSpace(description))
                 return ToolResult.Error("Test description cannot be empty");
+            if (description.Length > FieldLimits.TestDescriptionMax)
+                return ToolResult.Error($"Test description exceeds {FieldLimits.TestDescriptionMax} characters");
+            if (expected?.Length > FieldLimits.TestExpectedMax)
+                return ToolResult.Error($"Test expected value exceeds {FieldLimits.TestExpectedMax} characters");
 
             var ordinal = await _testPlanRepo.GetNextOrdinalAsync(ticketId, ct);
             var item = new TestPlanItem
@@ -364,6 +467,9 @@ public partial class TicketService
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("executing", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
@@ -398,9 +504,15 @@ public partial class TicketService
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("evaluating", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
+
+            if (summary?.Length > FieldLimits.SummaryMax)
+                return ToolResult.Error($"Summary exceeds {FieldLimits.SummaryMax} characters");
 
             ticket.Summary = summary ?? "";
             await _ticketRepo.UpdateAsync(ticket, ct);
@@ -416,11 +528,17 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> SetEvalAsync(string ticketId, string runId, string verdict, string content, CancellationToken ct = default)
+    public async Task<ToolResult> SetEvalAsync(string ticketId, string runId, string verdict, string content, string? idempotencyKey = null, CancellationToken ct = default)
     {
+        var cached = await CheckIdempotencyAsync(idempotencyKey, ct);
+        if (cached is not null) return cached;
+
         await _mutex.WaitAsync(ct);
         try
         {
+            var phaseError = await RequirePhaseAsync("evaluating", ct);
+            if (phaseError is not null) return phaseError;
+
             var ticket = await _ticketRepo.GetByIdAsync(ticketId, ct);
             if (ticket is null)
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
@@ -428,9 +546,19 @@ public partial class TicketService
             if (string.IsNullOrWhiteSpace(runId) || !RunIdPattern.IsMatch(runId))
                 return ToolResult.Error($"Invalid run ID '{runId}'. Expected format: <epoch>-<slug>");
 
+            var parts = runId.Split('-', 3);
+            if (!long.TryParse(parts[0], out var epoch))
+                return ToolResult.Error($"Invalid run ID '{runId}': epoch must be numeric");
+
+            if (!await _runChecker.CheckRunAsync(epoch, _projectRoot, ct))
+                return ToolResult.Error($"No subagent run matches epoch {epoch} in any subagent-runs.jsonl");
+
             Verdict parsedVerdict;
             try { parsedVerdict = Verdict.FromString(verdict); }
             catch (ArgumentException ex) { return ToolResult.Error(ex.Message); }
+
+            if (content?.Length > FieldLimits.EvalContentMax)
+                return ToolResult.Error($"Eval content exceeds {FieldLimits.EvalContentMax} characters");
 
             var report = new EvalReport
             {
@@ -441,12 +569,14 @@ public partial class TicketService
             };
             await _evalReportRepo.UpsertAsync(report, ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
+            var result = ToolResult.Ok(new Dictionary<string, object>
             {
                 ["ticket_id"] = ticketId,
                 ["run_id"] = runId,
                 ["verdict"] = verdict
             });
+            await StoreIdempotencyAsync(idempotencyKey, result, ct);
+            return result;
         }
         finally
         {

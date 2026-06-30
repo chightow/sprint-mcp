@@ -13,6 +13,15 @@ public record TicketStatus
         "open", "in_progress", "closed", "cancelled", "archived"
     };
 
+    private static readonly Dictionary<TicketStatus, HashSet<TicketStatus>> AllowedTransitions = new()
+    {
+        [Open] = new() { InProgress },
+        [InProgress] = new() { Closed, Cancelled },
+        [Closed] = new() { Archived },
+        [Cancelled] = new() { Archived },
+        [Archived] = new() { },
+    };
+
     public string Value { get; }
 
     private TicketStatus(string value) => Value = value;
@@ -23,6 +32,9 @@ public record TicketStatus
             throw new ArgumentException($"Invalid status '{value}'. Must be one of: open, in_progress, closed, cancelled, archived", nameof(value));
         return new TicketStatus(value.ToLowerInvariant());
     }
+
+    public bool CanTransitionTo(TicketStatus target) =>
+        AllowedTransitions.TryGetValue(this, out var allowed) && allowed.Contains(target);
 
     public bool IsTerminal => Value is "closed" or "cancelled" or "archived";
 

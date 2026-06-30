@@ -32,26 +32,27 @@ public class TicketHandler(TicketService ticketService)
         [Description("Eval run ID")] string? run_id = null,
         [Description("Eval verdict: pass, fail, pending")] string? verdict = null,
         [Description("Eval content")] string? content = null,
+        [Description("Idempotency key to prevent duplicate operations")] string? idempotency_key = null,
         CancellationToken ct = default)
     {
         try
         {
             var result = action switch
             {
-                "create" => await ticketService.CreateTicketAsync(title ?? "", description ?? "", priority ?? "medium", ct),
+                "create" => await ticketService.CreateTicketAsync(title ?? "", description ?? "", priority ?? "medium", idempotency_key, ct),
                 "get" => await ticketService.GetTicketAsync(ticket_id ?? "", ct),
                 "list" => await ticketService.ListTicketsAsync(ct),
                 "status" => await ticketService.UpdateStatusAsync(ticket_id ?? "", new_status ?? "", ct),
-                "add_criterion" => await ticketService.AddCriterionAsync(ticket_id ?? "", criterion ?? "", ct),
+                "add_criterion" => await ticketService.AddCriterionAsync(ticket_id ?? "", criterion ?? "", idempotency_key, ct),
                 "check_criterion" => await ticketService.CheckCriterionAsync(ticket_id ?? "", criterion_id, ordinal, ct),
                 "set_plan" => await ticketService.SetPlanAsync(ticket_id ?? "", tier, approach, files, approve, ct),
-                "add_decision" => await ticketService.AddDecisionAsync(ticket_id ?? "", decision_title ?? "", rationale ?? "", ct),
+                "add_decision" => await ticketService.AddDecisionAsync(ticket_id ?? "", decision_title ?? "", rationale ?? "", idempotency_key, ct),
                 "add_test" => await ticketService.AddTestAsync(ticket_id ?? "", test_description ?? "", expected ?? "", ct),
                 "update_test" => ordinal is not null
                     ? await ticketService.UpdateTestAsync(ticket_id ?? "", ordinal.Value, test_status ?? "", ct)
                     : Application.DTOs.ToolResult.Error("ordinal is required for update_test"),
                 "set_summary" => await ticketService.SetSummaryAsync(ticket_id ?? "", summary ?? "", ct),
-                "set_eval" => await ticketService.SetEvalAsync(ticket_id ?? "", run_id ?? "", verdict ?? "", content ?? "", ct),
+                "set_eval" => await ticketService.SetEvalAsync(ticket_id ?? "", run_id ?? "", verdict ?? "", content ?? "", idempotency_key, ct),
                 _ => Application.DTOs.ToolResult.Error($"Unknown action: {action}")
             };
             return HandlerUtils.ToResult(result);

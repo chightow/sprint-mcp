@@ -2,8 +2,10 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
+using SprintMcp.Application.Abstractions;
 using SprintMcp.Application.Services;
 using SprintMcp.Domain.Entities;
+using SprintMcp.Domain.ValueObjects;
 using SprintMcp.Infrastructure.Persistence;
 using SprintMcp.Infrastructure.Persistence.Repositories;
 
@@ -29,13 +31,39 @@ public class TicketServiceTests : IDisposable
 
     private AppDbContext CreateContext() => new(_options);
 
-    private TicketService CreateService(AppDbContext ctx) => new(
-        new TicketRepository(ctx),
-        new AcceptanceCriterionRepository(ctx),
-        new DecisionRepository(ctx),
-        new TestPlanItemRepository(ctx),
-        new EvalReportRepository(ctx),
-        Mock.Of<ILogger<TicketService>>());
+    private TicketService CreateService(AppDbContext ctx, ISubagentRunChecker? checker = null)
+    {
+        if (checker is null)
+        {
+            var mock = new Mock<ISubagentRunChecker>();
+            mock.Setup(m => m.CheckRunAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
+            checker = mock.Object;
+        }
+        return new TicketService(
+            new TicketRepository(ctx),
+            new AcceptanceCriterionRepository(ctx),
+            new DecisionRepository(ctx),
+            new TestPlanItemRepository(ctx),
+            new EvalReportRepository(ctx),
+            new SprintRepository(ctx),
+            checker,
+            new IdempotencyRepository(ctx),
+            Mock.Of<ILogger<TicketService>>(),
+            ".");
+    }
+
+    private async Task<Sprint> SetupSprintAsync(AppDbContext ctx, string phase = "planning")
+    {
+        var sprintRepo = new SprintRepository(ctx);
+        var sprintId = await sprintRepo.GetNextIdAsync();
+        var sprint = await sprintRepo.CreateAsync(sprintId);
+        while (phase != "planning" && sprint.Phase.Value != phase)
+            sprint.AdvancePhase();
+        if (phase != "planning")
+            await sprintRepo.UpdateAsync(sprint);
+        return sprint;
+    }
 
     [Fact]
     public async Task GetTicket_NotFound_ReturnsError()
@@ -50,6 +78,7 @@ public class TicketServiceTests : IDisposable
     public async Task CreateAndGetTicket_ReturnsTicketData()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test ticket", "Description");
         var svc = CreateService(ctx);
@@ -62,18 +91,32 @@ public class TicketServiceTests : IDisposable
     public async Task UpdateStatus_ValidTransition_Succeeds()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "executing");
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
-        var result = await svc.UpdateStatusAsync(ticket.Id, "closed");
+        var result = await svc.UpdateStatusAsync(ticket.Id, "in_progress");
         Assert.Equal("ok", result.Status);
-        Assert.Equal("closed", result.Data["new_status"]);
+        Assert.Equal("in_progress", result.Data["new_status"]);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_InvalidTransition_ReturnsError()
+    {
+        using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "executing");
+        var repo = new TicketRepository(ctx);
+        var ticket = await repo.CreateAsync("Test", "Desc");
+        var svc = CreateService(ctx);
+        var result = await svc.UpdateStatusAsync(ticket.Id, "archived");
+        Assert.Equal("error", result.Status);
     }
 
     [Fact]
     public async Task UpdateStatus_InvalidStatus_ReturnsError()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "executing");
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
@@ -85,6 +128,7 @@ public class TicketServiceTests : IDisposable
     public async Task AddCriterion_AddsRow()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
@@ -97,6 +141,7 @@ public class TicketServiceTests : IDisposable
     public async Task CheckCriterion_TogglesSatisfied()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "executing");
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var critRepo = new AcceptanceCriterionRepository(ctx);
@@ -114,6 +159,7 @@ public class TicketServiceTests : IDisposable
     public async Task SetPlan_UpdatesFields()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
@@ -127,6 +173,7 @@ public class TicketServiceTests : IDisposable
     public async Task AddDecision_InsertsRow()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
@@ -138,6 +185,7 @@ public class TicketServiceTests : IDisposable
     public async Task AddTest_InsertsItem()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
@@ -149,10 +197,15 @@ public class TicketServiceTests : IDisposable
     public async Task UpdateTest_ChangesStatus()
     {
         using var ctx = CreateContext();
+        var sprint = await SetupSprintAsync(ctx, "planning");
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
         await svc.AddTestAsync(ticket.Id, "Test", "Works");
+        // Advance sprint to executing for update_test
+        sprint.AdvancePhase();
+        var sprintRepo = new SprintRepository(ctx);
+        await sprintRepo.UpdateAsync(sprint);
         var result = await svc.UpdateTestAsync(ticket.Id, 1, "pass");
         Assert.Equal("ok", result.Status);
     }
@@ -161,6 +214,7 @@ public class TicketServiceTests : IDisposable
     public async Task SetSummary_SavesProse()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "evaluating");
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
@@ -174,10 +228,11 @@ public class TicketServiceTests : IDisposable
     public async Task SetEval_UpsertsReport()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "evaluating");
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
-        var result = await svc.SetEvalAsync(ticket.Id, "123456-foo", "pass", "All good");
+        var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "pass", "All good");
         Assert.Equal("ok", result.Status);
         var getResult = await svc.GetTicketAsync(ticket.Id);
         Assert.NotNull(getResult.Data["eval_report"]);
@@ -187,10 +242,23 @@ public class TicketServiceTests : IDisposable
     public async Task SetEval_InvalidVerdict_ReturnsError()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "evaluating");
         var repo = new TicketRepository(ctx);
         var ticket = await repo.CreateAsync("Test", "Desc");
         var svc = CreateService(ctx);
-        var result = await svc.SetEvalAsync(ticket.Id, "run-1", "bogus", "");
+        var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "bogus", "");
+        Assert.Equal("error", result.Status);
+    }
+
+    [Fact]
+    public async Task SetEval_BadRunId_ReturnsError()
+    {
+        using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "evaluating");
+        var repo = new TicketRepository(ctx);
+        var ticket = await repo.CreateAsync("Test", "Desc");
+        var svc = CreateService(ctx);
+        var result = await svc.SetEvalAsync(ticket.Id, "bad-run-id", "pass", "");
         Assert.Equal("error", result.Status);
     }
 
@@ -198,6 +266,7 @@ public class TicketServiceTests : IDisposable
     public async Task CreateTicket_Valid_Succeeds()
     {
         using var ctx = CreateContext();
+        await SetupSprintAsync(ctx);
         var svc = CreateService(ctx);
         var result = await svc.CreateTicketAsync("New ticket", "A description", "high");
         Assert.Equal("ok", result.Status);
@@ -247,5 +316,83 @@ public class TicketServiceTests : IDisposable
         Assert.Equal("ok", result.Status);
         var tickets = (List<object>)result.Data["tickets"];
         Assert.Empty(tickets);
+    }
+
+    [Fact]
+    public async Task PhaseGate_BlocksWrongPhase()
+    {
+        using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "executing");
+        var svc = CreateService(ctx);
+        var result = await svc.CreateTicketAsync("Test", "Desc", "medium");
+        Assert.Equal("error", result.Status);
+        Assert.Contains("planning", result.Message ?? "");
+    }
+
+    [Fact]
+    public async Task PhaseGate_NoActiveSprint_Blocks()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        var result = await svc.CreateTicketAsync("Test", "Desc", "medium");
+        Assert.Equal("error", result.Status);
+        Assert.Contains("No active sprint", result.Message ?? "");
+    }
+
+    [Fact]
+    public async Task IdempotencyKey_ReturnsCachedResult()
+    {
+        using var ctx = CreateContext();
+        await SetupSprintAsync(ctx);
+        var svc = CreateService(ctx);
+        var first = await svc.CreateTicketAsync("Idempotent", "Desc", "medium", "key-1");
+        Assert.Equal("ok", first.Status);
+
+        var second = await svc.CreateTicketAsync("Idempotent", "Desc", "medium", "key-1");
+        Assert.Equal("ok", second.Status);
+        Assert.Equal(first.Data["ticket_id"].ToString(), second.Data["ticket_id"].ToString());
+    }
+
+    [Fact]
+    public async Task FieldLimit_Title_BlocksOversize()
+    {
+        using var ctx = CreateContext();
+        await SetupSprintAsync(ctx);
+        var svc = CreateService(ctx);
+        var longTitle = new string('X', 201);
+        var result = await svc.CreateTicketAsync(longTitle, "Desc", "medium");
+        Assert.Equal("error", result.Status);
+    }
+
+    [Fact]
+    public async Task CanTransitionTo_OpenToInProgress_Allowed()
+    {
+        var result = TicketStatus.Open.CanTransitionTo(TicketStatus.InProgress);
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task CanTransitionTo_ArchivedToAny_Blocked()
+    {
+        Assert.False(TicketStatus.Archived.CanTransitionTo(TicketStatus.Closed));
+        Assert.False(TicketStatus.Archived.CanTransitionTo(TicketStatus.InProgress));
+        Assert.False(TicketStatus.Archived.CanTransitionTo(TicketStatus.Open));
+    }
+
+    [Fact]
+    public async Task SetEval_SubagentRunNotFound_ReturnsError()
+    {
+        using var ctx = CreateContext();
+        await SetupSprintAsync(ctx, "evaluating");
+        var repo = new TicketRepository(ctx);
+        var ticket = await repo.CreateAsync("Test", "Desc");
+
+        var mock = new Mock<ISubagentRunChecker>();
+        mock.Setup(m => m.CheckRunAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var svc = CreateService(ctx, mock.Object);
+
+        var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "pass", "All good");
+        Assert.Equal("error", result.Status);
     }
 }

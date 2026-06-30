@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS Sprints (
     Id          TEXT    PRIMARY KEY,
     Status      TEXT    NOT NULL DEFAULT 'active'
                 CHECK (Status IN ('active','closed')),
+    Phase       TEXT    NOT NULL DEFAULT 'planning'
+                CHECK (Phase IN ('planning','executing','evaluating','complete','failed')),
     StartedAt   TEXT    NOT NULL,
     ClosedAt    TEXT    NULL,
     CHECK (Id GLOB 'SPRINT-[0-9][0-9]*')
@@ -68,7 +70,8 @@ CREATE TABLE IF NOT EXISTS EvalReports (
     Content     TEXT    NOT NULL DEFAULT '',
     MatchedRunTs TEXT   NULL,
     CreatedAt   TEXT    NOT NULL,
-    UpdatedAt   TEXT    NOT NULL
+    UpdatedAt   TEXT    NOT NULL,
+    CHECK (length(RunId) >= 3)
 );
 
 CREATE TABLE IF NOT EXISTS SprintHandoffs (
@@ -87,4 +90,10 @@ CREATE TABLE IF NOT EXISTS ActiveTasks (
     Ordinal     INTEGER NOT NULL,
     CreatedAt   TEXT    NOT NULL,
     UNIQUE (SprintId, Ordinal)
+);
+
+CREATE TABLE IF NOT EXISTS IdempotencyKeys (
+    Key         TEXT    PRIMARY KEY,
+    ResultJson  TEXT    NOT NULL,
+    CreatedAt   TEXT    NOT NULL
 );

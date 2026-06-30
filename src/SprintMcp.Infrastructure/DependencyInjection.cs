@@ -25,6 +25,7 @@ public static class DependencyInjection
 
         services.AddScoped<ISubagentRunChecker, SubagentRunChecker>();
         services.AddScoped<ITransactionManager, TransactionManager>();
+        services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
 
         return services;
     }

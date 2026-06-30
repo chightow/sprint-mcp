@@ -10,6 +10,7 @@ namespace SprintMcp.Application.Services;
 public class SprintService
 {
     private static readonly SemaphoreSlim _sprintLock = new(1, 1);
+    private static DateTime _lockAcquiredAt = DateTime.MinValue;
 
     private readonly ITicketRepository _ticketRepo;
     private readonly ISprintRepository _sprintRepo;
@@ -20,106 +21,6 @@ public class SprintService
     private readonly ITransactionManager _txManager;
     private readonly ILogger<SprintService> _logger;
     private readonly string _projectRoot;
-
-    public async Task<ToolResult> UpdateHandoffAsync(string? currentFocus, string? inProgress, string? discoveries, string? nextSteps, CancellationToken ct = default)
-    {
-        await _sprintLock.WaitAsync(ct);
-        try
-        {
-        var active = await _sprintRepo.GetActiveAsync(ct);
-        if (active is null)
-            return ToolResult.Error("No active sprint");
-
-        var handoff = await _handoffRepo.GetBySprintIdAsync(active.Id, ct)
-            ?? new SprintHandoff { SprintId = active.Id };
-
-        if (currentFocus is not null) handoff.CurrentFocus = currentFocus;
-        if (inProgress is not null) handoff.InProgress = inProgress;
-        if (discoveries is not null) handoff.Discoveries = discoveries;
-        if (nextSteps is not null) handoff.NextSteps = nextSteps;
-
-        await _handoffRepo.UpsertAsync(handoff, ct);
-
-        return ToolResult.Ok(new Dictionary<string, object>
-        {
-            ["sprint_id"] = active.Id,
-            ["current_focus"] = handoff.CurrentFocus,
-            ["in_progress"] = handoff.InProgress,
-            ["discoveries"] = handoff.Discoveries,
-            ["next_steps"] = handoff.NextSteps
-        });
-        }
-        finally
-        {
-            _sprintLock.Release();
-        }
-    }
-
-    public async Task<ToolResult> AddActiveTaskAsync(string taskRef, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(taskRef))
-            return ToolResult.Error("Task reference cannot be empty");
-
-        await _sprintLock.WaitAsync(ct);
-        try
-        {
-        var active = await _sprintRepo.GetActiveAsync(ct);
-        if (active is null)
-            return ToolResult.Error("No active sprint");
-
-        var tasks = await _activeTaskRepo.GetBySprintIdAsync(active.Id, ct);
-        var maxOrdinal = tasks.Count > 0 ? tasks.Max(t => t.Ordinal) : 0;
-
-        var task = new ActiveTask
-        {
-            SprintId = active.Id,
-            TaskRef = taskRef,
-            Ordinal = maxOrdinal + 1
-        };
-        await _activeTaskRepo.AddAsync(task, ct);
-
-        return ToolResult.Ok(new Dictionary<string, object>
-        {
-            ["sprint_id"] = active.Id,
-            ["task_id"] = task.Id,
-            ["task_ref"] = taskRef
-        });
-        }
-        finally
-        {
-            _sprintLock.Release();
-        }
-    }
-
-    public async Task<ToolResult> RemoveActiveTaskAsync(int taskId, CancellationToken ct = default)
-    {
-        if (taskId <= 0)
-            return ToolResult.Error("Invalid task ID");
-
-        await _sprintLock.WaitAsync(ct);
-        try
-        {
-        var active = await _sprintRepo.GetActiveAsync(ct);
-        if (active is null)
-            return ToolResult.Error("No active sprint");
-
-        var task = await _activeTaskRepo.GetByIdAsync(taskId, ct);
-        if (task is null || task.SprintId != active.Id)
-            return ToolResult.Error($"Task {taskId} not found in active sprint");
-
-        await _activeTaskRepo.DeleteByIdAsync(taskId, ct);
-
-        return ToolResult.Ok(new Dictionary<string, object>
-        {
-            ["sprint_id"] = active.Id,
-            ["removed_task_id"] = taskId
-        });
-        }
-        finally
-        {
-            _sprintLock.Release();
-        }
-    }
 
     public SprintService(
         ITicketRepository ticketRepo,
@@ -143,6 +44,120 @@ public class SprintService
         _projectRoot = projectRoot;
     }
 
+    public async Task<ToolResult> UpdateHandoffAsync(string? currentFocus, string? inProgress, string? discoveries, string? nextSteps, CancellationToken ct = default)
+    {
+        await _sprintLock.WaitAsync(ct);
+        _lockAcquiredAt = DateTime.UtcNow;
+        try
+        {
+            var active = await _sprintRepo.GetActiveAsync(ct);
+            if (active is null)
+                return ToolResult.Error("No active sprint");
+
+            if (currentFocus?.Length > FieldLimits.HandoffFieldMax)
+                return ToolResult.Error($"Current focus exceeds {FieldLimits.HandoffFieldMax} characters");
+            if (inProgress?.Length > FieldLimits.HandoffFieldMax)
+                return ToolResult.Error($"In progress exceeds {FieldLimits.HandoffFieldMax} characters");
+            if (discoveries?.Length > FieldLimits.HandoffFieldMax)
+                return ToolResult.Error($"Discoveries exceeds {FieldLimits.HandoffFieldMax} characters");
+            if (nextSteps?.Length > FieldLimits.HandoffFieldMax)
+                return ToolResult.Error($"Next steps exceeds {FieldLimits.HandoffFieldMax} characters");
+
+            var handoff = await _handoffRepo.GetBySprintIdAsync(active.Id, ct)
+                ?? new SprintHandoff { SprintId = active.Id };
+
+            if (currentFocus is not null) handoff.CurrentFocus = currentFocus;
+            if (inProgress is not null) handoff.InProgress = inProgress;
+            if (discoveries is not null) handoff.Discoveries = discoveries;
+            if (nextSteps is not null) handoff.NextSteps = nextSteps;
+
+            await _handoffRepo.UpsertAsync(handoff, ct);
+
+            return ToolResult.Ok(new Dictionary<string, object>
+            {
+                ["sprint_id"] = active.Id,
+                ["current_focus"] = handoff.CurrentFocus,
+                ["in_progress"] = handoff.InProgress,
+                ["discoveries"] = handoff.Discoveries,
+                ["next_steps"] = handoff.NextSteps
+            });
+        }
+        finally
+        {
+            _sprintLock.Release();
+        }
+    }
+
+    public async Task<ToolResult> AddActiveTaskAsync(string taskRef, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(taskRef))
+            return ToolResult.Error("Task reference cannot be empty");
+        if (taskRef.Length > FieldLimits.ActiveTaskRefMax)
+            return ToolResult.Error($"Task reference exceeds {FieldLimits.ActiveTaskRefMax} characters");
+
+        await _sprintLock.WaitAsync(ct);
+        _lockAcquiredAt = DateTime.UtcNow;
+        try
+        {
+            var active = await _sprintRepo.GetActiveAsync(ct);
+            if (active is null)
+                return ToolResult.Error("No active sprint");
+
+            var tasks = await _activeTaskRepo.GetBySprintIdAsync(active.Id, ct);
+            var maxOrdinal = tasks.Count > 0 ? tasks.Max(t => t.Ordinal) : 0;
+
+            var task = new ActiveTask
+            {
+                SprintId = active.Id,
+                TaskRef = taskRef,
+                Ordinal = maxOrdinal + 1
+            };
+            await _activeTaskRepo.AddAsync(task, ct);
+
+            return ToolResult.Ok(new Dictionary<string, object>
+            {
+                ["sprint_id"] = active.Id,
+                ["task_id"] = task.Id,
+                ["task_ref"] = taskRef
+            });
+        }
+        finally
+        {
+            _sprintLock.Release();
+        }
+    }
+
+    public async Task<ToolResult> RemoveActiveTaskAsync(int taskId, CancellationToken ct = default)
+    {
+        if (taskId <= 0)
+            return ToolResult.Error("Invalid task ID");
+
+        await _sprintLock.WaitAsync(ct);
+        _lockAcquiredAt = DateTime.UtcNow;
+        try
+        {
+            var active = await _sprintRepo.GetActiveAsync(ct);
+            if (active is null)
+                return ToolResult.Error("No active sprint");
+
+            var task = await _activeTaskRepo.GetByIdAsync(taskId, ct);
+            if (task is null || task.SprintId != active.Id)
+                return ToolResult.Error($"Task {taskId} not found in active sprint");
+
+            await _activeTaskRepo.DeleteByIdAsync(taskId, ct);
+
+            return ToolResult.Ok(new Dictionary<string, object>
+            {
+                ["sprint_id"] = active.Id,
+                ["removed_task_id"] = taskId
+            });
+        }
+        finally
+        {
+            _sprintLock.Release();
+        }
+    }
+
     private static bool TryParsePriority(string priority, out Priority result)
     {
         try
@@ -160,6 +175,7 @@ public class SprintService
     public async Task<ToolResult> StartSprintAsync(string? title, string? ticketId, string priority, CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
+        _lockAcquiredAt = DateTime.UtcNow;
         try
         {
             await using var tx = await _txManager.BeginAsync(ct);
@@ -180,6 +196,8 @@ public class SprintService
             }
             else if (title is not null)
             {
+                if (title.Length > FieldLimits.TitleMax)
+                    return ToolResult.Error($"Title exceeds {FieldLimits.TitleMax} characters");
                 if (!TryParsePriority(priority, out var parsedPrio))
                     return ToolResult.Error($"Invalid priority '{priority}'");
                 ticket = await _ticketRepo.CreateAsync(title, title, parsedPrio, ct);
@@ -231,9 +249,35 @@ public class SprintService
             ["plan_approved"] = t.PlanApprovedAt.HasValue
         }).ToList<object>();
 
+        // Snapshot lock state atomically under lock to avoid stale _lockAcquiredAt
+        bool lockHeld;
+        string lockSince;
+        if (_sprintLock.CurrentCount == 0)
+        {
+            await _sprintLock.WaitAsync(ct);
+            try
+            {
+                lockHeld = true;
+                lockSince = _lockAcquiredAt.ToString("O");
+            }
+            finally
+            {
+                _sprintLock.Release();
+            }
+        }
+        else
+        {
+            lockHeld = false;
+            lockSince = "";
+        }
+
         return ToolResult.Ok(new Dictionary<string, object>
         {
             ["sprint_id"] = active.Id,
+            ["phase"] = active.Phase.Value,
+            ["status"] = active.Status.Value,
+            ["lock_held"] = lockHeld,
+            ["lock_held_since"] = lockSince,
             ["tickets"] = ticketList,
             ["handoff"] = handoff is not null ? new Dictionary<string, object>
             {
@@ -251,9 +295,43 @@ public class SprintService
         });
     }
 
+    public async Task<ToolResult> AdvancePhaseAsync(CancellationToken ct = default)
+    {
+        await _sprintLock.WaitAsync(ct);
+        _lockAcquiredAt = DateTime.UtcNow;
+        try
+        {
+            var active = await _sprintRepo.GetActiveAsync(ct);
+            if (active is null)
+                return ToolResult.Error("No active sprint");
+
+            try
+            {
+                active.AdvancePhase();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ToolResult.Error(ex.Message);
+            }
+
+            await _sprintRepo.UpdateAsync(active, ct);
+
+            return ToolResult.Ok(new Dictionary<string, object>
+            {
+                ["sprint_id"] = active.Id,
+                ["phase"] = active.Phase.Value
+            });
+        }
+        finally
+        {
+            _sprintLock.Release();
+        }
+    }
+
     public async Task<ToolResult> CloseSprintAsync(CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
+        _lockAcquiredAt = DateTime.UtcNow;
         try
         {
             await using var tx = await _txManager.BeginAsync(ct);
@@ -262,15 +340,15 @@ public class SprintService
             if (active is null)
                 return ToolResult.Error("No active sprint to close");
 
+            if (active.Phase != SprintPhase.Evaluating)
+                return ToolResult.Error($"Cannot close sprint in phase '{active.Phase}'. Sprint must be in evaluating phase.");
+
             var tickets = await _ticketRepo.GetBySprintIdAsync(active.Id, ct);
             if (tickets.Count == 0)
                 return ToolResult.Error("No tickets in sprint. Nothing to close.");
 
             var nonTrivial = tickets.Where(t => t.Tier != TicketTier.Trivial).ToList();
-            var terminalStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                { "closed", "cancelled", "archived" };
-
-            var incomplete = nonTrivial.Where(t => !terminalStatuses.Contains(t.Status.Value)).Select(t => t.Id).ToList();
+            var incomplete = nonTrivial.Where(t => !t.Status.IsTerminal).Select(t => t.Id).ToList();
             if (incomplete.Count > 0)
                 return ToolResult.Error($"Cannot close sprint. Non-terminal tickets: {string.Join(", ", incomplete)}");
 

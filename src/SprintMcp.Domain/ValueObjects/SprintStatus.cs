@@ -10,6 +10,12 @@ public record SprintStatus
         "active", "closed"
     };
 
+    private static readonly Dictionary<SprintStatus, HashSet<SprintStatus>> AllowedTransitions = new()
+    {
+        [Active] = new() { Closed },
+        [Closed] = new() { },
+    };
+
     public string Value { get; }
 
     private SprintStatus(string value) => Value = value;
@@ -20,6 +26,9 @@ public record SprintStatus
             throw new ArgumentException($"Invalid sprint status '{value}'. Must be one of: active, closed", nameof(value));
         return new SprintStatus(value.ToLowerInvariant());
     }
+
+    public bool CanTransitionTo(SprintStatus target) =>
+        AllowedTransitions.TryGetValue(this, out var allowed) && allowed.Contains(target);
 
     public bool IsTerminal => Value == "closed";
     public override string ToString() => Value;

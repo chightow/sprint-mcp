@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<SprintHandoff> SprintHandoffs => Set<SprintHandoff>();
     public DbSet<ActiveTask> ActiveTasks => Set<ActiveTask>();
+    public DbSet<IdempotencyRecord> IdempotencyKeys => Set<IdempotencyRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +27,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         var sprintStatusConverter = new ValueConverter<SprintStatus, string>(
             v => v.Value, v => SprintStatus.FromString(v));
+
+        var sprintPhaseConverter = new ValueConverter<SprintPhase, string>(
+            v => v.Value, v => SprintPhase.FromString(v));
 
         var verdictConverter = new ValueConverter<Verdict, string>(
             v => v.Value, v => Verdict.FromString(v));
@@ -112,6 +116,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasColumnType("TEXT");
             entity.Property(e => e.Status).IsRequired().HasColumnType("TEXT").HasConversion(sprintStatusConverter);
+            entity.Property(e => e.Phase).IsRequired().HasColumnType("TEXT").HasConversion(sprintPhaseConverter);
             entity.Property(e => e.StartedAt).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.ClosedAt).HasColumnType("TEXT");
             entity.ToTable(t => t.HasCheckConstraint("CK_Sprint_Id", "Id GLOB 'SPRINT-[0-9][0-9]*'"));
@@ -136,6 +141,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.Ordinal).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
             entity.HasIndex(e => new { e.SprintId, e.Ordinal }).IsUnique();
+        });
+
+        modelBuilder.Entity<IdempotencyRecord>(entity =>
+        {
+            entity.HasKey(e => e.Key);
+            entity.Property(e => e.Key).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.ResultJson).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
         });
     }
 }
