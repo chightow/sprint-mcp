@@ -9,9 +9,6 @@ namespace SprintMcp.Application.Services;
 
 public class SprintService
 {
-    private static readonly SemaphoreSlim _sprintLock = new(1, 1);
-    private static DateTime _lockAcquiredAt = DateTime.MinValue;
-
     private readonly ITicketRepository _ticketRepo;
     private readonly ISprintRepository _sprintRepo;
     private readonly ISprintHandoffRepository _handoffRepo;
@@ -21,6 +18,8 @@ public class SprintService
     private readonly ITransactionManager _txManager;
     private readonly ILogger<SprintService> _logger;
     private readonly string _projectRoot;
+    private readonly TimeProvider _timeProvider;
+    private readonly ISprintLock _sprintLock;
 
     public SprintService(
         ITicketRepository ticketRepo,
@@ -31,7 +30,9 @@ public class SprintService
         ISubagentRunChecker runChecker,
         ITransactionManager txManager,
         ILogger<SprintService> logger,
-        string projectRoot)
+        string projectRoot,
+        TimeProvider timeProvider,
+        ISprintLock sprintLock)
     {
         _ticketRepo = ticketRepo;
         _sprintRepo = sprintRepo;
@@ -42,12 +43,13 @@ public class SprintService
         _txManager = txManager;
         _logger = logger;
         _projectRoot = projectRoot;
+        _timeProvider = timeProvider;
+        _sprintLock = sprintLock;
     }
 
     public async Task<ToolResult> UpdateHandoffAsync(string? currentFocus, string? inProgress, string? discoveries, string? nextSteps, CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
-        _lockAcquiredAt = DateTime.UtcNow;
         try
         {
             var active = await _sprintRepo.GetActiveAsync(ct);
@@ -63,6 +65,7 @@ public class SprintService
             if (nextSteps?.Length > FieldLimits.HandoffFieldMax)
                 return ToolResult.Error($"Next steps exceeds {FieldLimits.HandoffFieldMax} characters");
 
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
             var handoff = await _handoffRepo.GetBySprintIdAsync(active.Id, ct)
                 ?? new SprintHandoff { SprintId = active.Id };
 
@@ -70,6 +73,7 @@ public class SprintService
             if (inProgress is not null) handoff.InProgress = inProgress;
             if (discoveries is not null) handoff.Discoveries = discoveries;
             if (nextSteps is not null) handoff.NextSteps = nextSteps;
+            handoff.UpdatedAt = now;
 
             await _handoffRepo.UpsertAsync(handoff, ct);
 
@@ -96,7 +100,6 @@ public class SprintService
             return ToolResult.Error($"Task reference exceeds {FieldLimits.ActiveTaskRefMax} characters");
 
         await _sprintLock.WaitAsync(ct);
-        _lockAcquiredAt = DateTime.UtcNow;
         try
         {
             var active = await _sprintRepo.GetActiveAsync(ct);
@@ -133,7 +136,6 @@ public class SprintService
             return ToolResult.Error("Invalid task ID");
 
         await _sprintLock.WaitAsync(ct);
-        _lockAcquiredAt = DateTime.UtcNow;
         try
         {
             var active = await _sprintRepo.GetActiveAsync(ct);
@@ -158,24 +160,9 @@ public class SprintService
         }
     }
 
-    private static bool TryParsePriority(string priority, out Priority result)
-    {
-        try
-        {
-            result = Priority.FromString(priority);
-            return true;
-        }
-        catch (ArgumentException)
-        {
-            result = Priority.Default;
-            return false;
-        }
-    }
-
     public async Task<ToolResult> StartSprintAsync(string? title, string? ticketId, string priority, CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
-        _lockAcquiredAt = DateTime.UtcNow;
         try
         {
             await using var tx = await _txManager.BeginAsync(ct);
@@ -198,9 +185,9 @@ public class SprintService
             {
                 if (title.Length > FieldLimits.TitleMax)
                     return ToolResult.Error($"Title exceeds {FieldLimits.TitleMax} characters");
-                if (!TryParsePriority(priority, out var parsedPrio))
+                if (!Priority.TryFromString(priority, out var parsedPrio))
                     return ToolResult.Error($"Invalid priority '{priority}'");
-                ticket = await _ticketRepo.CreateAsync(title, title, parsedPrio, ct);
+                ticket = await _ticketRepo.CreateAsync(title, title, parsedPrio!, ct);
                 tid = ticket.Id;
             }
             else
@@ -211,7 +198,8 @@ public class SprintService
             var sprintId = await _sprintRepo.GetNextIdAsync(ct);
             await _sprintRepo.CreateAsync(sprintId, ct);
 
-            ticket.SprintId = sprintId;
+            ticket.AssignToSprint(sprintId);
+            ticket.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
             await _ticketRepo.UpdateAsync(ticket, ct);
 
             await tx.CommitAsync(ct);
@@ -249,27 +237,7 @@ public class SprintService
             ["plan_approved"] = t.PlanApprovedAt.HasValue
         }).ToList<object>();
 
-        // Snapshot lock state atomically under lock to avoid stale _lockAcquiredAt
-        bool lockHeld;
-        string lockSince;
-        if (_sprintLock.CurrentCount == 0)
-        {
-            await _sprintLock.WaitAsync(ct);
-            try
-            {
-                lockHeld = true;
-                lockSince = _lockAcquiredAt.ToString("O");
-            }
-            finally
-            {
-                _sprintLock.Release();
-            }
-        }
-        else
-        {
-            lockHeld = false;
-            lockSince = "";
-        }
+        var (lockHeld, lockSince) = _sprintLock.Snapshot();
 
         return ToolResult.Ok(new Dictionary<string, object>
         {
@@ -277,7 +245,7 @@ public class SprintService
             ["phase"] = active.Phase.Value,
             ["status"] = active.Status.Value,
             ["lock_held"] = lockHeld,
-            ["lock_held_since"] = lockSince,
+            ["lock_held_since"] = lockHeld ? lockSince.ToString("O") : "",
             ["tickets"] = ticketList,
             ["handoff"] = handoff is not null ? new Dictionary<string, object>
             {
@@ -298,7 +266,6 @@ public class SprintService
     public async Task<ToolResult> AdvancePhaseAsync(CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
-        _lockAcquiredAt = DateTime.UtcNow;
         try
         {
             var active = await _sprintRepo.GetActiveAsync(ct);
@@ -331,7 +298,6 @@ public class SprintService
     public async Task<ToolResult> CloseSprintAsync(CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
-        _lockAcquiredAt = DateTime.UtcNow;
         try
         {
             await using var tx = await _txManager.BeginAsync(ct);
@@ -352,6 +318,7 @@ public class SprintService
             if (incomplete.Count > 0)
                 return ToolResult.Error($"Cannot close sprint. Non-terminal tickets: {string.Join(", ", incomplete)}");
 
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
             foreach (var t in nonTrivial)
             {
                 var report = await _evalReportRepo.GetByTicketIdAsync(t.Id, ct);
@@ -372,6 +339,7 @@ public class SprintService
                     return ToolResult.Error($"Ticket {t.Id} cannot close: run-id '{report.RunId}' has no matching subagent entry.");
 
                 report.MatchedRunTs = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime.ToString("O");
+                report.UpdatedAt = now;
                 await _evalReportRepo.UpsertAsync(report, ct);
             }
 

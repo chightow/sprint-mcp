@@ -7,7 +7,7 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class TicketRepository(AppDbContext db) : ITicketRepository
 {
-    private static readonly SemaphoreSlim _idLock = new(1, 1);
+    private readonly SemaphoreSlim _idLock = new(1, 1);
     public async Task<Ticket?> GetByIdAsync(string ticketId, CancellationToken ct = default)
     {
         return await db.Tickets.FirstOrDefaultAsync(t => t.Id == ticketId, ct);
@@ -21,23 +21,6 @@ public class TicketRepository(AppDbContext db) : ITicketRepository
     public async Task<List<Ticket>> GetBySprintIdAsync(string sprintId, CancellationToken ct = default)
     {
         return await db.Tickets.Where(t => t.SprintId == sprintId).OrderBy(t => t.Id).ToListAsync(ct);
-    }
-
-    public async Task<Ticket> CreateAsync(string title, string description, CancellationToken ct = default)
-    {
-        await _idLock.WaitAsync(ct);
-        try
-        {
-            var nextId = await GetNextIdAsync(ct);
-            var ticket = new Ticket(nextId, title, description);
-            db.Tickets.Add(ticket);
-            await db.SaveChangesAsync(ct);
-            return ticket;
-        }
-        finally
-        {
-            _idLock.Release();
-        }
     }
 
     public async Task<Ticket> CreateAsync(string title, string description, Priority priority, CancellationToken ct = default)
@@ -60,7 +43,6 @@ public class TicketRepository(AppDbContext db) : ITicketRepository
 
     public async Task UpdateAsync(Ticket ticket, CancellationToken ct = default)
     {
-        ticket.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }
 

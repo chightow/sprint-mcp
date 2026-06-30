@@ -44,19 +44,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasColumnType("TEXT");
-            entity.Property(e => e.Title).IsRequired().HasColumnType("TEXT").HasMaxLength(200);
-            entity.Property(e => e.Description).IsRequired().HasColumnType("TEXT").HasMaxLength(2000);
+            entity.Property(e => e.Title).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.Description).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Status).IsRequired().HasColumnType("TEXT").HasConversion(statusConverter);
             entity.Property(e => e.Priority).IsRequired().HasColumnType("TEXT").HasConversion(priorityConverter);
             entity.Property(e => e.Tier).IsRequired().HasColumnType("TEXT").HasConversion(tierConverter);
             entity.Property(e => e.SprintId).HasColumnType("TEXT");
-            entity.Property(e => e.PlanApproach).HasColumnType("TEXT").HasMaxLength(2000);
-            entity.Property(e => e.PlanFiles).HasColumnType("TEXT").HasMaxLength(1000);
+            entity.Property(e => e.PlanApproach).HasColumnType("TEXT");
+            entity.Property(e => e.PlanFiles).HasColumnType("TEXT");
             entity.Property(e => e.PlanApprovedAt).HasColumnType("TEXT");
-            entity.Property(e => e.Summary).HasColumnType("TEXT").HasMaxLength(5000);
+            entity.Property(e => e.Summary).HasColumnType("TEXT");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.UpdatedAt).IsRequired().HasColumnType("TEXT");
             entity.HasIndex(e => e.SprintId);
+
+            entity.HasOne<Sprint>().WithMany().HasForeignKey(e => e.SprintId).OnDelete(DeleteBehavior.SetNull);
 
             entity.ToTable(t => t.HasCheckConstraint("CK_Ticket_Status", "Status IN ('open','in_progress','closed','cancelled','archived')"));
             entity.ToTable(t => t.HasCheckConstraint("CK_Ticket_Priority", "Priority IN ('low','medium','high','critical')"));
@@ -69,18 +71,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Ordinal).IsRequired();
-            entity.Property(e => e.Text).IsRequired().HasColumnType("TEXT").HasMaxLength(500);
+            entity.Property(e => e.Text).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Satisfied).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
             entity.HasIndex(e => new { e.TicketId, e.Ordinal }).IsUnique();
+
+            entity.HasOne<Ticket>().WithMany().HasForeignKey(e => e.TicketId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Decision>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT");
-            entity.Property(e => e.Title).IsRequired().HasColumnType("TEXT").HasMaxLength(200);
-            entity.Property(e => e.Rationale).HasColumnType("TEXT").HasMaxLength(2000);
+            entity.Property(e => e.Title).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.Rationale).HasColumnType("TEXT");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
             entity.HasIndex(e => new { e.TicketId, e.Title }).IsUnique();
         });
@@ -90,11 +94,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Ordinal).IsRequired();
-            entity.Property(e => e.Description).IsRequired().HasColumnType("TEXT").HasMaxLength(500);
-            entity.Property(e => e.Expected).HasColumnType("TEXT").HasMaxLength(500);
+            entity.Property(e => e.Description).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.Expected).HasColumnType("TEXT");
             entity.Property(e => e.Status).IsRequired().HasColumnType("TEXT").HasConversion(testPlanStatusConverter);
             entity.Property(e => e.UpdatedAt).IsRequired().HasColumnType("TEXT");
             entity.HasIndex(e => new { e.TicketId, e.Ordinal }).IsUnique();
+
+            entity.HasOne<Ticket>().WithMany().HasForeignKey(e => e.TicketId).OnDelete(DeleteBehavior.Cascade);
+
             entity.ToTable(t => t.HasCheckConstraint("CK_TestPlan_Status", "Status IN ('pending','pass','fail','blocked')"));
         });
 
@@ -104,10 +111,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.TicketId).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.RunId).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Verdict).IsRequired().HasColumnType("TEXT").HasConversion(verdictConverter);
-            entity.Property(e => e.Content).HasColumnType("TEXT").HasMaxLength(10000);
+            entity.Property(e => e.Content).HasColumnType("TEXT");
             entity.Property(e => e.MatchedRunTs).HasColumnType("TEXT");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.UpdatedAt).IsRequired().HasColumnType("TEXT");
+
+            entity.HasOne<Ticket>().WithOne().HasForeignKey<EvalReport>(e => e.TicketId).OnDelete(DeleteBehavior.Cascade);
+
             entity.ToTable(t => t.HasCheckConstraint("CK_EvalReport_Verdict", "Verdict IN ('pass','fail','pending')"));
         });
 
@@ -126,21 +136,25 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.HasKey(e => e.SprintId);
             entity.Property(e => e.SprintId).IsRequired().HasColumnType("TEXT");
-            entity.Property(e => e.CurrentFocus).HasColumnType("TEXT").HasMaxLength(2000);
-            entity.Property(e => e.InProgress).HasColumnType("TEXT").HasMaxLength(2000);
-            entity.Property(e => e.Discoveries).HasColumnType("TEXT").HasMaxLength(2000);
-            entity.Property(e => e.NextSteps).HasColumnType("TEXT").HasMaxLength(2000);
+            entity.Property(e => e.CurrentFocus).HasColumnType("TEXT");
+            entity.Property(e => e.InProgress).HasColumnType("TEXT");
+            entity.Property(e => e.Discoveries).HasColumnType("TEXT");
+            entity.Property(e => e.NextSteps).HasColumnType("TEXT");
             entity.Property(e => e.UpdatedAt).IsRequired().HasColumnType("TEXT");
+
+            entity.HasOne<Sprint>().WithOne().HasForeignKey<SprintHandoff>(e => e.SprintId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ActiveTask>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.SprintId).IsRequired().HasColumnType("TEXT");
-            entity.Property(e => e.TaskRef).IsRequired().HasColumnType("TEXT").HasMaxLength(200);
+            entity.Property(e => e.TaskRef).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Ordinal).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
             entity.HasIndex(e => new { e.SprintId, e.Ordinal }).IsUnique();
+
+            entity.HasOne<Sprint>().WithMany().HasForeignKey(e => e.SprintId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<IdempotencyRecord>(entity =>

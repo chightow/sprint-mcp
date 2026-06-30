@@ -23,6 +23,17 @@ public record Priority
         return new Priority(value.ToLowerInvariant());
     }
 
+    public static bool TryFromString(string? value, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Priority? result)
+    {
+        if (value is not null && ValidValues.Contains(value))
+        {
+            result = new Priority(value.ToLowerInvariant());
+            return true;
+        }
+        result = null;
+        return false;
+    }
+
     public static Priority Default => Medium;
     public override string ToString() => Value;
 }

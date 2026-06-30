@@ -14,6 +14,12 @@ public class TestPlanItemRepository(AppDbContext db) : ITestPlanItemRepository
             .ToListAsync(ct);
     }
 
+    public async Task<TestPlanItem?> GetByTicketIdAndOrdinalAsync(string ticketId, int ordinal, CancellationToken ct = default)
+    {
+        return await db.TestPlanItems
+            .FirstOrDefaultAsync(t => t.TicketId == ticketId && t.Ordinal == ordinal, ct);
+    }
+
     public async Task<TestPlanItem> AddAsync(TestPlanItem item, CancellationToken ct = default)
     {
         db.TestPlanItems.Add(item);
@@ -23,7 +29,6 @@ public class TestPlanItemRepository(AppDbContext db) : ITestPlanItemRepository
 
     public async Task UpdateAsync(TestPlanItem item, CancellationToken ct = default)
     {
-        item.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }
 

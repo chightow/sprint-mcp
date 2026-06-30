@@ -13,7 +13,6 @@ public class SprintHandoffRepository(AppDbContext db) : ISprintHandoffRepository
 
     public async Task UpsertAsync(SprintHandoff handoff, CancellationToken ct = default)
     {
-        handoff.UpdatedAt = DateTime.UtcNow;
         var existing = await db.SprintHandoffs.FirstOrDefaultAsync(h => h.SprintId == handoff.SprintId, ct);
         if (existing is not null)
         {
@@ -21,7 +20,7 @@ public class SprintHandoffRepository(AppDbContext db) : ISprintHandoffRepository
             existing.InProgress = handoff.InProgress;
             existing.Discoveries = handoff.Discoveries;
             existing.NextSteps = handoff.NextSteps;
-            existing.UpdatedAt = DateTime.UtcNow;
+            existing.UpdatedAt = handoff.UpdatedAt;
         }
         else
         {

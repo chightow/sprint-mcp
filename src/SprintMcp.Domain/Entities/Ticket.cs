@@ -10,7 +10,7 @@ public class Ticket
     public TicketStatus Status { get; private set; } = TicketStatus.Open;
     public Priority Priority { get; private set; } = Priority.Medium;
     public TicketTier Tier { get; private set; } = TicketTier.Regular;
-    public string? SprintId { get; set; }
+    public string? SprintId { get; private set; }
     public string PlanApproach { get; set; } = string.Empty;
     public string PlanFiles { get; set; } = string.Empty;
     public DateTime? PlanApprovedAt { get; set; }
@@ -48,8 +48,14 @@ public class Ticket
         Tier = newTier;
     }
 
-    public void MarkPlanApproved()
+    public void MarkPlanApproved(DateTime timestamp)
     {
-        PlanApprovedAt = DateTime.UtcNow;
+        PlanApprovedAt = timestamp;
+    }
+
+    public void AssignToSprint(string sprintId)
+    {
+        _ = new SprintId(sprintId);
+        SprintId = sprintId;
     }
 }

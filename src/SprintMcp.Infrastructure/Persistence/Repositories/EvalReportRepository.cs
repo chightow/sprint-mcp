@@ -20,11 +20,10 @@ public class EvalReportRepository(AppDbContext db) : IEvalReportRepository
             existing.Verdict = report.Verdict;
             existing.Content = report.Content;
             existing.MatchedRunTs = report.MatchedRunTs;
-            existing.UpdatedAt = DateTime.UtcNow;
+            existing.UpdatedAt = report.UpdatedAt;
         }
         else
         {
-            report.UpdatedAt = DateTime.UtcNow;
             db.EvalReports.Add(report);
         }
         await db.SaveChangesAsync(ct);

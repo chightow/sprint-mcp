@@ -21,10 +21,7 @@ public class Sprint
 
     public void AdvancePhase()
     {
-        var next = Phase.Next();
-        if (!Phase.CanTransitionTo(next))
-            throw new InvalidOperationException($"Cannot transition from '{Phase}' to '{next}'.");
-        Phase = next;
+        Phase = Phase.Next();
     }
 
     public void Close()

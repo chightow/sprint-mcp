@@ -8,7 +8,6 @@ public interface ITicketRepository
     Task<Ticket?> GetByIdAsync(string ticketId, CancellationToken ct = default);
     Task<List<Ticket>> GetAllAsync(CancellationToken ct = default);
     Task<List<Ticket>> GetBySprintIdAsync(string sprintId, CancellationToken ct = default);
-    Task<Ticket> CreateAsync(string title, string description, CancellationToken ct = default);
     Task<Ticket> CreateAsync(string title, string description, Priority priority, CancellationToken ct = default);
     Task UpdateAsync(Ticket ticket, CancellationToken ct = default);
     Task<string> GetNextIdAsync(CancellationToken ct = default);

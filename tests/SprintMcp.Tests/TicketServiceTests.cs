@@ -48,9 +48,10 @@ public class TicketServiceTests : IDisposable
             new EvalReportRepository(ctx),
             new SprintRepository(ctx),
             checker,
-            new IdempotencyRepository(ctx),
-            Mock.Of<ILogger<TicketService>>(),
-            ".");
+            new IdempotencyService(new IdempotencyRepository(ctx), TimeProvider.System),
+            ".",
+            TimeProvider.System,
+            new TicketLock());
     }
 
     private async Task<Sprint> SetupSprintAsync(AppDbContext ctx, string phase = "planning")
@@ -80,7 +81,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test ticket", "Description");
+        var ticket = await repo.CreateAsync("Test ticket", "Description", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.GetTicketAsync(ticket.Id);
         Assert.Equal("ok", result.Status);
@@ -93,7 +94,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "executing");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.UpdateStatusAsync(ticket.Id, "in_progress");
         Assert.Equal("ok", result.Status);
@@ -106,7 +107,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "executing");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.UpdateStatusAsync(ticket.Id, "archived");
         Assert.Equal("error", result.Status);
@@ -118,7 +119,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "executing");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.UpdateStatusAsync(ticket.Id, "bogus");
         Assert.Equal("error", result.Status);
@@ -130,7 +131,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.AddCriterionAsync(ticket.Id, "Must work");
         Assert.Equal("ok", result.Status);
@@ -143,7 +144,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "executing");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var critRepo = new AcceptanceCriterionRepository(ctx);
         var crit = await critRepo.AddAsync(new AcceptanceCriterion
         {
@@ -161,7 +162,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.SetPlanAsync(ticket.Id, "complex", "TDD", "src/foo.cs", true);
         Assert.Equal("ok", result.Status);
@@ -175,7 +176,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.AddDecisionAsync(ticket.Id, "Use SQLite", "It is simple");
         Assert.Equal("ok", result.Status);
@@ -187,7 +188,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx);
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.AddTestAsync(ticket.Id, "Test the thing", "It works");
         Assert.Equal("ok", result.Status);
@@ -199,7 +200,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         var sprint = await SetupSprintAsync(ctx, "planning");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         await svc.AddTestAsync(ticket.Id, "Test", "Works");
         // Advance sprint to executing for update_test
@@ -216,7 +217,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "evaluating");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.SetSummaryAsync(ticket.Id, "Done well");
         Assert.Equal("ok", result.Status);
@@ -230,7 +231,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "evaluating");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "pass", "All good");
         Assert.Equal("ok", result.Status);
@@ -244,7 +245,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "evaluating");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "bogus", "");
         Assert.Equal("error", result.Status);
@@ -256,7 +257,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "evaluating");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         var result = await svc.SetEvalAsync(ticket.Id, "bad-run-id", "pass", "");
         Assert.Equal("error", result.Status);
@@ -298,8 +299,8 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         var svc = CreateService(ctx);
         var repo = new TicketRepository(ctx);
-        await repo.CreateAsync("First", "Desc");
-        await repo.CreateAsync("Second", "Desc");
+        await repo.CreateAsync("First", "Desc", Priority.Medium);
+        await repo.CreateAsync("Second", "Desc", Priority.Medium);
 
         var result = await svc.ListTicketsAsync();
         Assert.Equal("ok", result.Status);
@@ -385,7 +386,7 @@ public class TicketServiceTests : IDisposable
         using var ctx = CreateContext();
         await SetupSprintAsync(ctx, "evaluating");
         var repo = new TicketRepository(ctx);
-        var ticket = await repo.CreateAsync("Test", "Desc");
+        var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
 
         var mock = new Mock<ISubagentRunChecker>();
         mock.Setup(m => m.CheckRunAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))

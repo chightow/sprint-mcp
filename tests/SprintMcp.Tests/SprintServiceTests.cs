@@ -49,7 +49,9 @@ public class SprintServiceTests : IDisposable
             checker,
             txManager ?? new MockTransactionManager(),
             Mock.Of<ILogger<SprintService>>(),
-            ".");
+            ".",
+            TimeProvider.System,
+            new SprintLock());
     }
 
     private async Task AdvanceToEvaluating(SprintService svc)

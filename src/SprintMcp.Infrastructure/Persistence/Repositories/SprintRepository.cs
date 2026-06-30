@@ -7,7 +7,7 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class SprintRepository(AppDbContext db) : ISprintRepository
 {
-    private static readonly SemaphoreSlim _idLock = new(1, 1);
+    private readonly SemaphoreSlim _idLock = new(1, 1);
     public async Task<Sprint?> GetActiveAsync(CancellationToken ct = default)
     {
         return await db.Sprints.FirstOrDefaultAsync(s => s.Status == SprintStatus.Active, ct);

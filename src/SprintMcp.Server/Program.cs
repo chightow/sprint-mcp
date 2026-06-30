@@ -37,19 +37,10 @@ static string FindProjectRoot(string start)
     var d = Path.GetFullPath(start);
     for (var depth = 0; depth < 50; depth++)
     {
-        if (Directory.Exists(Path.Combine(d, ".tickets")))
+        if (Directory.Exists(Path.Combine(d, ".tickets")) || Directory.Exists(Path.Combine(d, ".git")))
             return d;
         var parent = Path.GetDirectoryName(d);
         if (parent is null || parent == d) break;
-        d = parent;
-    }
-    d = Path.GetFullPath(start);
-    for (var depth = 0; depth < 50; depth++)
-    {
-        if (Directory.Exists(Path.Combine(d, ".git")))
-            return d;
-        var parent = Path.GetDirectoryName(d);
-        if (parent is null || parent == d) return start;
         d = parent;
     }
     return start;
