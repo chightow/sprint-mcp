@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using ModelContextProtocol;
 using SprintMcp.Application;
 using SprintMcp.Infrastructure;
@@ -12,6 +14,8 @@ var dbPath = configuredPath ?? Path.Combine(projectRoot, ".tickets", "sprint.db"
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
 var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.Configure<ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 
 builder.Services
     .AddSingleton(projectRoot)
