@@ -1,8 +1,32 @@
 # sprint-mcp
 
-.NET MCP stdio server for lightweight sprint/ticket management. SQLite storage, DDD architecture.
+.NET MCP stdio server for lightweight sprint/ticket management. SQLite storage, DDD architecture with event protocol and invariant engine.
 
 **No prompt burden.** Tools enforce all safety — the LLM is never told "be careful" or "check phase."
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    Server (MCP)                       │
+│  TicketHandler  SprintHandler  EventToolHandler      │
+├──────────────────────────────────────────────────────┤
+│                  Application Layer                    │
+│  TicketService  SprintService  EventService          │
+│  InvariantEngine  IdempotencyService                 │
+│  PhaseGateInvariant  TicketStatusTransitionInvariant │
+├──────────────────────────────────────────────────────┤
+│                  Domain Layer                         │
+│  Ticket  Sprint  Event  ActiveTask  EvalReport       │
+│  AcceptanceCriterion  Decision  TestPlanItem          │
+│  SprintHandoff  IdempotencyRecord                    │
+├──────────────────────────────────────────────────────┤
+│                Infrastructure Layer                   │
+│  AppDbContext (SQLite/EF Core)                        │
+│  Repository implementations (9)                       │
+│  SubagentRunChecker  InvariantContext                 │
+└──────────────────────────────────────────────────────┘
+```
 
 ## Build & Run
 
@@ -12,7 +36,7 @@ dotnet build SprintMcp.slnx
 dotnet publish src/SprintMcp.Server -o ./publish
 ```
 
-Storage: `.tickets/sprint.db` (SQLite via EF Core). Auto-created on first run.
+Storage: `SPRINTMCP_DB_PATH` env var or `.tickets/sprint.db` (SQLite via EF Core). Auto-created on first run.
 
 ## Sprint Phase Lifecycle
 
@@ -38,9 +62,29 @@ Every mutation tool checks the current sprint phase. Wrong phase → error retur
 | `sprint update_handoff` | any active phase |
 | `sprint add_task` / `remove_task` | any active phase |
 
-## Status Transition Matrix
+## Event Protocol
 
-Defined as adjacency dictionaries on value objects:
+Dual-category append-only event ledger stored in the `Events` table:
+
+- **Domain events** (16 types): System-emitted for business operations (`TicketCreated`, `PhaseAdvanced`, `SprintClosed`, etc.). Cannot be proposed by agents.
+- **Agent events** (12 types): Proposed via `propose_event` tool (`FileRead`, `FileWrite`, `RunTerminal`, `ToolResult`, etc.). Validated through the InvariantEngine before acceptance.
+- **Execution-gated** subset: `FileWrite`, `EditString`, `RunTerminal` — only allowed during the `executing` phase.
+- Events carry causal attribution via `caused_by` array for ledger correlation.
+
+Two MCP tools: `propose_event` (validates + appends) and `list_events` (cursor-based pagination with type/aggregate filtering).
+
+## Invariant Engine
+
+Pluggable `IInvariant` rules run against every agent event proposal:
+
+| Invariant | Applies To | Check |
+|---|---|---|
+| **PhaseGateInvariant** | `FileWrite`, `EditString`, `RunTerminal`, `ToolResult` (write) | Rejects if not in `executing` phase |
+| **TicketStatusTransitionInvariant** | `TicketStatusChanged` | Validates status transition matches current DB state |
+
+Rejected events return error with the invariant name and reason — no prompt burden.
+
+## Status Transition Matrix
 
 ```
 Ticket:    open → in_progress → closed/cancelled → archived → (frozen)
@@ -48,11 +92,11 @@ Sprint:    active → closed
 SprintPhase: planning → executing → evaluating → complete/failed
 ```
 
-Illegal transitions are rejected at the service layer — no prompt burden.
+Illegal transitions rejected at the service layer.
 
 ## Field Limits
 
-Rejected at the **service layer** before reaching the DB:
+Rejected at the service layer before reaching the DB:
 
 | Field | Max |
 |---|---|
@@ -105,6 +149,13 @@ Mutating actions accept optional `idempotency_key` (24h TTL) for safe LLM retrie
 
 `board` includes lock diagnostics: `lock_held` (bool), `lock_held_since` (ISO timestamp).
 
+### event
+
+| Action | Description |
+|---|---|
+| `propose_event` | Propose an agent event. Runs through InvariantEngine → appends to ledger on success. |
+| `list_events` | List events with optional `after_id`, `type`, `aggregate_type`, `aggregate_id`, `category` filters. |
+
 ## Subagent Run Validation
 
 - `set_eval` validates the run-id against `{projectRoot}/.canon|.claude|.opencode/subagent-runs.jsonl` **immediately** — not at close time.
@@ -116,4 +167,4 @@ Mutating actions accept optional `idempotency_key` (24h TTL) for safe LLM retrie
 dotnet test
 ```
 
-61 tests: unit + integration with in-memory SQLite per test class.
+65+ tests: unit + integration with in-memory SQLite per test class.
