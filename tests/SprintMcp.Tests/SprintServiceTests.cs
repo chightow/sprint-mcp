@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using SprintMcp.Application.Abstractions;
+using SprintMcp.Application.DTOs;
 using SprintMcp.Application.Services;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.ValueObjects;
@@ -11,7 +12,7 @@ using SprintMcp.Infrastructure.Persistence.Repositories;
 
 namespace SprintMcp.Tests;
 
-public class SprintServiceTests : IDisposable
+public class SprintServiceTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<AppDbContext> _options;
@@ -23,11 +24,19 @@ public class SprintServiceTests : IDisposable
         _options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlite(_connection)
             .Options;
-        using var ctx = new AppDbContext(_options);
-        DatabaseInitializer.Initialize(ctx);
     }
 
-    public void Dispose() => _connection.Close();
+    public async Task InitializeAsync()
+    {
+        using var ctx = new AppDbContext(_options);
+        await DatabaseInitializer.InitializeAsync(ctx);
+    }
+
+    public Task DisposeAsync()
+    {
+        _connection.Close();
+        return Task.CompletedTask;
+    }
 
     private AppDbContext CreateContext() => new(_options);
 
@@ -69,8 +78,9 @@ public class SprintServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.StartSprintAsync("My ticket", null, "high");
         Assert.Equal("ok", result.Status);
-        Assert.NotNull(result.Data["sprint_id"]);
-        Assert.NotNull(result.Data["ticket_id"]);
+        var data = Assert.IsType<SprintStartedResponse>(result.Data);
+        Assert.NotNull(data.SprintId);
+        Assert.NotNull(data.TicketId);
     }
 
     [Fact]
@@ -99,7 +109,6 @@ public class SprintServiceTests : IDisposable
         var svc = CreateService(ctx);
         var sprintRepo = new SprintRepository(ctx);
         var sprint = await sprintRepo.CreateNextAsync();
-        // Advance to evaluating
         sprint = await sprintRepo.GetByIdAsync(sprint.Id);
         sprint!.AdvancePhase();
         sprint.AdvancePhase();
@@ -116,10 +125,6 @@ public class SprintServiceTests : IDisposable
         var svc = CreateService(ctx);
         await svc.StartSprintAsync("My ticket", null, "medium");
         await AdvanceToEvaluating(svc);
-
-        var ticketRepo = new TicketRepository(ctx);
-        var tickets = await ticketRepo.GetAllAsync();
-        var ticket = tickets[0];
 
         var result = await svc.CloseSprintAsync();
         Assert.Equal("error", result.Status);
@@ -166,14 +171,15 @@ public class SprintServiceTests : IDisposable
 
         var result = await svc.CloseSprintAsync();
         Assert.Equal("ok", result.Status);
-        Assert.Contains("closed successfully", (string)result.Data["message"]);
+        var data = Assert.IsType<SprintClosedResponse>(result.Data);
+        Assert.Contains("closed successfully", data.Message);
 
         var report = await evalRepo.GetByTicketIdAsync(ticket.Id);
         Assert.NotNull(report!.MatchedRunTs);
 
         var sprintRepo = new SprintRepository(ctx);
-        var sprint = await sprintRepo.GetActiveAsync();
-        Assert.Null(sprint);
+        var active = await sprintRepo.GetActiveAsync();
+        Assert.Null(active);
     }
 
     [Fact]
@@ -199,7 +205,8 @@ public class SprintServiceTests : IDisposable
         Assert.Equal("ok", result.Status);
 
         var board = await svc.GetBoardAsync();
-        Assert.Equal("executing", board.Data["phase"]);
+        var boardData = Assert.IsType<SprintBoardResponse>(board.Data);
+        Assert.Equal("executing", boardData.Phase);
     }
 
     [Fact]
@@ -214,7 +221,8 @@ public class SprintServiceTests : IDisposable
         Assert.Equal("ok", result.Status);
 
         var board = await svc.GetBoardAsync();
-        Assert.Equal("evaluating", board.Data["phase"]);
+        var boardData = Assert.IsType<SprintBoardResponse>(board.Data);
+        Assert.Equal("evaluating", boardData.Phase);
     }
 
     [Fact]
@@ -247,7 +255,8 @@ public class SprintServiceTests : IDisposable
 
         var result = await svc.GetBoardAsync();
         Assert.Equal("ok", result.Status);
-        Assert.NotNull(result.Data["tickets"]);
+        var data = Assert.IsType<SprintBoardResponse>(result.Data);
+        Assert.NotNull(data.Tickets);
     }
 
     [Fact]
@@ -259,8 +268,8 @@ public class SprintServiceTests : IDisposable
 
         var result = await svc.GetBoardAsync();
         Assert.Equal("ok", result.Status);
-        Assert.Contains("lock_held", result.Data);
-        Assert.Contains("lock_held_since", result.Data);
+        var data = Assert.IsType<SprintBoardResponse>(result.Data);
+        Assert.False(data.LockHeld);
     }
 
     [Fact]
@@ -281,10 +290,11 @@ public class SprintServiceTests : IDisposable
 
         var result = await svc.UpdateHandoffAsync("Focus on X", "Working on Y", "Found Z", "Do A");
         Assert.Equal("ok", result.Status);
-        Assert.Equal("Focus on X", result.Data["current_focus"]);
-        Assert.Equal("Working on Y", result.Data["in_progress"]);
-        Assert.Equal("Found Z", result.Data["discoveries"]);
-        Assert.Equal("Do A", result.Data["next_steps"]);
+        var data = Assert.IsType<HandoffUpdatedResponse>(result.Data);
+        Assert.Equal("Focus on X", data.CurrentFocus);
+        Assert.Equal("Working on Y", data.InProgress);
+        Assert.Equal("Found Z", data.Discoveries);
+        Assert.Equal("Do A", data.NextSteps);
     }
 
     [Fact]
@@ -297,8 +307,9 @@ public class SprintServiceTests : IDisposable
 
         var result = await svc.UpdateHandoffAsync("New focus", null, null, null);
         Assert.Equal("ok", result.Status);
-        Assert.Equal("New focus", result.Data["current_focus"]);
-        Assert.Equal("", result.Data["in_progress"]);
+        var data = Assert.IsType<HandoffUpdatedResponse>(result.Data);
+        Assert.Equal("New focus", data.CurrentFocus);
+        Assert.Equal("", data.InProgress);
     }
 
     [Fact]
@@ -328,7 +339,8 @@ public class SprintServiceTests : IDisposable
         await svc.StartSprintAsync("Test", null, "medium");
         var result = await svc.AddActiveTaskAsync("TKT-0001");
         Assert.Equal("ok", result.Status);
-        Assert.Equal("TKT-0001", result.Data["task_ref"]);
+        var data = Assert.IsType<TaskAddedResponse>(result.Data);
+        Assert.Equal("TKT-0001", data.TaskRef);
     }
 
     [Fact]
@@ -357,11 +369,13 @@ public class SprintServiceTests : IDisposable
         var svc = CreateService(ctx);
         await svc.StartSprintAsync("Test", null, "medium");
         var add = await svc.AddActiveTaskAsync("TKT-0001");
-        var taskId = (int)add.Data["task_id"];
+        var addData = Assert.IsType<TaskAddedResponse>(add.Data);
+        var taskId = addData.TaskId;
 
         var result = await svc.RemoveActiveTaskAsync(taskId);
         Assert.Equal("ok", result.Status);
-        Assert.Equal(taskId, result.Data["removed_task_id"]);
+        var data = Assert.IsType<TaskRemovedResponse>(result.Data);
+        Assert.Equal(taskId, data.RemovedTaskId);
     }
 
     [Fact]
@@ -384,7 +398,6 @@ public class SprintServiceTests : IDisposable
             new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         await evalRepo.UpsertAsync(evalReport);
 
-        // Subagent check would return false, but MatchedRunTs already set → skipped
         var mock = new Mock<ISubagentRunChecker>();
         mock.Setup(m => m.CheckRunAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -392,7 +405,8 @@ public class SprintServiceTests : IDisposable
 
         var result = await svcWithMock.CloseSprintAsync();
         Assert.Equal("ok", result.Status);
-        Assert.Contains("closed successfully", (string)result.Data["message"]);
+        var data = Assert.IsType<SprintClosedResponse>(result.Data);
+        Assert.Contains("closed successfully", data.Message);
 
         var sprintRepo = new SprintRepository(ctx);
         var active = await sprintRepo.GetActiveAsync();

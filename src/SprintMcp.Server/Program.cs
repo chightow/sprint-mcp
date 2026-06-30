@@ -35,7 +35,7 @@ await app.RunAsync();
 static string FindProjectRoot(string start)
 {
     var d = Path.GetFullPath(start);
-    for (var depth = 0; depth < 50; depth++)
+    while (true)
     {
         if (Directory.Exists(Path.Combine(d, ".tickets")) || Directory.Exists(Path.Combine(d, ".git")))
             return d;

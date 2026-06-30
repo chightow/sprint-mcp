@@ -17,6 +17,4 @@ public static class DatabaseInitializer
 
         await db.Database.ExecuteSqlRawAsync(sql);
     }
-
-    public static void Initialize(AppDbContext db) => InitializeAsync(db).GetAwaiter().GetResult();
 }

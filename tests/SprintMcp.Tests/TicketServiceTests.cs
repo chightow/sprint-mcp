@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using SprintMcp.Application.Abstractions;
+using SprintMcp.Application.DTOs;
 using SprintMcp.Application.Services;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.ValueObjects;
@@ -11,7 +12,7 @@ using SprintMcp.Infrastructure.Persistence.Repositories;
 
 namespace SprintMcp.Tests;
 
-public class TicketServiceTests : IDisposable
+public class TicketServiceTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<AppDbContext> _options;
@@ -23,11 +24,19 @@ public class TicketServiceTests : IDisposable
         _options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlite(_connection)
             .Options;
-        using var ctx = new AppDbContext(_options);
-        DatabaseInitializer.Initialize(ctx);
     }
 
-    public void Dispose() => _connection.Close();
+    public async Task InitializeAsync()
+    {
+        using var ctx = new AppDbContext(_options);
+        await DatabaseInitializer.InitializeAsync(ctx);
+    }
+
+    public Task DisposeAsync()
+    {
+        _connection.Close();
+        return Task.CompletedTask;
+    }
 
     private AppDbContext CreateContext() => new(_options);
 
@@ -85,7 +94,8 @@ public class TicketServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.GetTicketAsync(ticket.Id);
         Assert.Equal("ok", result.Status);
-        Assert.Equal(ticket.Id, result.Data["ticket_id"]);
+        var data = Assert.IsType<TicketDetailResponse>(result.Data);
+        Assert.Equal(ticket.Id, data.TicketId);
     }
 
     [Fact]
@@ -98,7 +108,8 @@ public class TicketServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.UpdateStatusAsync(ticket.Id, "in_progress");
         Assert.Equal("ok", result.Status);
-        Assert.Equal("in_progress", result.Data["new_status"]);
+        var data = Assert.IsType<TicketStatusResponse>(result.Data);
+        Assert.Equal("in_progress", data.NewStatus);
     }
 
     [Fact]
@@ -135,7 +146,8 @@ public class TicketServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.AddCriterionAsync(ticket.Id, "Must work");
         Assert.Equal("ok", result.Status);
-        Assert.Equal(1, result.Data["ordinal"]);
+        var data = Assert.IsType<CriterionAddedResponse>(result.Data);
+        Assert.Equal(1, data.Ordinal);
     }
 
     [Fact]
@@ -150,7 +162,8 @@ public class TicketServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.CheckCriterionAsync(ticket.Id, crit.Id, null);
         Assert.Equal("ok", result.Status);
-        Assert.True((bool)result.Data["satisfied"]);
+        var data = Assert.IsType<CriterionCheckedResponse>(result.Data);
+        Assert.True(data.Satisfied);
     }
 
     [Fact]
@@ -163,8 +176,13 @@ public class TicketServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.SetPlanAsync(ticket.Id, "complex", "TDD", "src/foo.cs", true);
         Assert.Equal("ok", result.Status);
+        var data = Assert.IsType<PlanSetResponse>(result.Data);
+        Assert.Equal("complex", data.Tier);
+        Assert.True(data.PlanApproved);
+
         var getResult = await svc.GetTicketAsync(ticket.Id);
-        Assert.Equal("complex", getResult.Data["tier"]);
+        var getData = Assert.IsType<TicketDetailResponse>(getResult.Data);
+        Assert.Equal("complex", getData.Tier);
     }
 
     [Fact]
@@ -200,12 +218,13 @@ public class TicketServiceTests : IDisposable
         var ticket = await repo.CreateAsync("Test", "Desc", Priority.Medium);
         var svc = CreateService(ctx);
         await svc.AddTestAsync(ticket.Id, "Test", "Works");
-        // Advance sprint to executing for update_test
         sprint.AdvancePhase();
         var sprintRepo = new SprintRepository(ctx);
         await sprintRepo.UpdateAsync(sprint);
         var result = await svc.UpdateTestAsync(ticket.Id, 1, "pass");
         Assert.Equal("ok", result.Status);
+        var data = Assert.IsType<TestUpdatedResponse>(result.Data);
+        Assert.Equal("pass", data.Status);
     }
 
     [Fact]
@@ -219,7 +238,8 @@ public class TicketServiceTests : IDisposable
         var result = await svc.SetSummaryAsync(ticket.Id, "Done well");
         Assert.Equal("ok", result.Status);
         var getResult = await svc.GetTicketAsync(ticket.Id);
-        Assert.Equal("Done well", getResult.Data["summary"]);
+        var getData = Assert.IsType<TicketDetailResponse>(getResult.Data);
+        Assert.Equal("Done well", getData.Summary);
     }
 
     [Fact]
@@ -233,7 +253,8 @@ public class TicketServiceTests : IDisposable
         var result = await svc.SetEvalAsync(ticket.Id, "1234567890-test-run", "pass", "All good");
         Assert.Equal("ok", result.Status);
         var getResult = await svc.GetTicketAsync(ticket.Id);
-        Assert.NotNull(getResult.Data["eval_report"]);
+        var getData = Assert.IsType<TicketDetailResponse>(getResult.Data);
+        Assert.NotNull(getData.EvalReport);
     }
 
     [Fact]
@@ -268,8 +289,9 @@ public class TicketServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.CreateTicketAsync("New ticket", "A description", "high");
         Assert.Equal("ok", result.Status);
-        Assert.NotNull(result.Data["ticket_id"]);
-        Assert.Equal("New ticket", result.Data["title"]);
+        var data = Assert.IsType<TicketCreatedResponse>(result.Data);
+        Assert.NotNull(data.TicketId);
+        Assert.Equal("New ticket", data.Title);
     }
 
     [Fact]
@@ -301,8 +323,8 @@ public class TicketServiceTests : IDisposable
 
         var result = await svc.ListTicketsAsync();
         Assert.Equal("ok", result.Status);
-        var tickets = (List<object>)result.Data["tickets"];
-        Assert.Equal(2, tickets.Count);
+        var data = Assert.IsType<TicketListResponse>(result.Data);
+        Assert.Equal(2, data.Tickets.Count);
     }
 
     [Fact]
@@ -312,8 +334,8 @@ public class TicketServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.ListTicketsAsync();
         Assert.Equal("ok", result.Status);
-        var tickets = (List<object>)result.Data["tickets"];
-        Assert.Empty(tickets);
+        var data = Assert.IsType<TicketListResponse>(result.Data);
+        Assert.Empty(data.Tickets);
     }
 
     [Fact]
@@ -348,7 +370,11 @@ public class TicketServiceTests : IDisposable
 
         var second = await svc.CreateTicketAsync("Idempotent", "Desc", "medium", "key-1");
         Assert.Equal("ok", second.Status);
-        Assert.Equal(first.Data["ticket_id"].ToString(), second.Data["ticket_id"].ToString());
+        var firstData = first.GetData<TicketCreatedResponse>();
+        var secondData = second.GetData<TicketCreatedResponse>();
+        Assert.NotNull(firstData);
+        Assert.NotNull(secondData);
+        Assert.Equal(firstData!.TicketId, secondData!.TicketId);
     }
 
     [Fact]

@@ -28,10 +28,21 @@ public class IdempotencyService
 
         var cached = await _repo.GetAsync(key, ct);
         if (cached is null) return null;
-        if (_timeProvider.GetUtcNow().UtcDateTime - cached.CreatedAt < Ttl)
+        if (_timeProvider.GetUtcNow().UtcDateTime - cached.CreatedAt >= Ttl)
+        {
+            await _repo.DeleteAsync(key, ct);
+            return null;
+        }
+
+        try
+        {
             return JsonSerializer.Deserialize<ToolResult>(cached.ResultJson);
-        await _repo.DeleteAsync(key, ct);
-        return null;
+        }
+        catch (JsonException)
+        {
+            await _repo.DeleteAsync(key, ct);
+            return null;
+        }
     }
 
     public async Task StoreAsync(string? key, ToolResult result, CancellationToken ct = default)

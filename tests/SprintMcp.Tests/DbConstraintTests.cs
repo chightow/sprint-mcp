@@ -5,7 +5,7 @@ using SprintMcp.Infrastructure.Persistence;
 
 namespace SprintMcp.Tests;
 
-public class DbConstraintTests : IDisposable
+public class DbConstraintTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<AppDbContext> _options;
@@ -17,11 +17,20 @@ public class DbConstraintTests : IDisposable
         _options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlite(_connection)
             .Options;
-        using var ctx = new AppDbContext(_options);
-        DatabaseInitializer.Initialize(ctx);
     }
 
-    public void Dispose() => _connection.Close();
+    public async Task InitializeAsync()
+    {
+        using var ctx = new AppDbContext(_options);
+        await DatabaseInitializer.InitializeAsync(ctx);
+    }
+
+    public Task DisposeAsync()
+    {
+        _connection.Close();
+        return Task.CompletedTask;
+    }
+
     private AppDbContext Ctx() => new(_options);
 
     [Fact]

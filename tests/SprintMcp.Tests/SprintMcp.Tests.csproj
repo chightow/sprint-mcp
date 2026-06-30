@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\SprintMcp.Domain\SprintMcp.Domain.csproj" />
     <ProjectReference Include="..\..\src\SprintMcp.Application\SprintMcp.Application.csproj" />
     <ProjectReference Include="..\..\src\SprintMcp.Infrastructure\SprintMcp.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\SprintMcp.Server\SprintMcp.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>

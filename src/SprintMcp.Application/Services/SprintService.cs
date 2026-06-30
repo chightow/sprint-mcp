@@ -76,14 +76,13 @@ public class SprintService
 
             await _handoffRepo.UpsertAsync(handoff, ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
-            {
-                ["sprint_id"] = active.Id,
-                ["current_focus"] = handoff.CurrentFocus,
-                ["in_progress"] = handoff.InProgress,
-                ["discoveries"] = handoff.Discoveries,
-                ["next_steps"] = handoff.NextSteps
-            });
+            return ToolResult.Ok(new HandoffUpdatedResponse(
+                active.Id,
+                handoff.CurrentFocus,
+                handoff.InProgress,
+                handoff.Discoveries,
+                handoff.NextSteps
+            ));
         }
         finally
         {
@@ -111,12 +110,7 @@ public class SprintService
             var task = new ActiveTask(active.Id, taskRef, maxOrdinal + 1);
             await _activeTaskRepo.AddAsync(task, ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
-            {
-                ["sprint_id"] = active.Id,
-                ["task_id"] = task.Id,
-                ["task_ref"] = taskRef
-            });
+            return ToolResult.Ok(new TaskAddedResponse(active.Id, task.Id, taskRef));
         }
         finally
         {
@@ -140,11 +134,7 @@ public class SprintService
             if (!deleted)
                 return ToolResult.Error($"Task {taskId} not found in active sprint");
 
-            return ToolResult.Ok(new Dictionary<string, object>
-            {
-                ["sprint_id"] = active.Id,
-                ["removed_task_id"] = taskId
-            });
+            return ToolResult.Ok(new TaskRemovedResponse(active.Id, taskId));
         }
         finally
         {
@@ -195,12 +185,7 @@ public class SprintService
 
             await tx.CommitAsync(ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
-            {
-                ["ticket_id"] = tid,
-                ["sprint_id"] = sprintId,
-                ["message"] = $"Sprint started: {sprintId}"
-            });
+            return ToolResult.Ok(new SprintStartedResponse(tid, sprintId, $"Sprint started: {sprintId}"));
         }
         finally
         {
@@ -218,40 +203,24 @@ public class SprintService
         var handoff = await _handoffRepo.GetBySprintIdAsync(active.Id, ct);
         var activeTasks = await _activeTaskRepo.GetBySprintIdAsync(active.Id, ct);
 
-        var ticketList = tickets.Select(t => new Dictionary<string, object>
-        {
-            ["id"] = t.Id,
-            ["title"] = t.Title,
-            ["status"] = t.Status.Value,
-            ["priority"] = t.Priority.Value,
-            ["tier"] = t.Tier.Value,
-            ["plan_approved"] = t.PlanApprovedAt.HasValue
-        }).ToList<object>();
+        var ticketList = tickets.Select(t => new TicketBoardDto(
+            t.Id, t.Title, t.Status.Value, t.Priority.Value, t.Tier.Value, t.PlanApprovedAt.HasValue
+        )).ToList();
 
         var (lockHeld, lockSince) = _sprintLock.Snapshot();
 
-        return ToolResult.Ok(new Dictionary<string, object>
-        {
-            ["sprint_id"] = active.Id,
-            ["phase"] = active.Phase.Value,
-            ["status"] = active.Status.Value,
-            ["lock_held"] = lockHeld,
-            ["lock_held_since"] = lockHeld ? lockSince.ToString("O") : "",
-            ["tickets"] = ticketList,
-            ["handoff"] = handoff is not null ? new Dictionary<string, object>
-            {
-                ["current_focus"] = handoff.CurrentFocus,
-                ["in_progress"] = handoff.InProgress,
-                ["discoveries"] = handoff.Discoveries,
-                ["next_steps"] = handoff.NextSteps
-            } : null!,
-            ["active_tasks"] = activeTasks.Select(t => new Dictionary<string, object>
-            {
-                ["id"] = t.Id,
-                ["task_ref"] = t.TaskRef,
-                ["ordinal"] = t.Ordinal
-            }).ToList<object>()
-        });
+        return ToolResult.Ok(new SprintBoardResponse(
+            active.Id,
+            active.Phase.Value,
+            active.Status.Value,
+            lockHeld,
+            lockHeld ? lockSince.ToString("O") : "",
+            ticketList,
+            handoff is not null
+                ? new HandoffDto(handoff.CurrentFocus, handoff.InProgress, handoff.Discoveries, handoff.NextSteps)
+                : null,
+            activeTasks.Select(t => new ActiveTaskDto(t.Id, t.TaskRef, t.Ordinal)).ToList()
+        ));
     }
 
     public async Task<ToolResult> AdvancePhaseAsync(CancellationToken ct = default)
@@ -274,11 +243,7 @@ public class SprintService
 
             await _sprintRepo.UpdateAsync(active, ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
-            {
-                ["sprint_id"] = active.Id,
-                ["phase"] = active.Phase.Value
-            });
+            return ToolResult.Ok(new SprintAdvancedResponse(active.Id, active.Phase.Value));
         }
         finally
         {
@@ -335,21 +300,15 @@ public class SprintService
 
             active.Close(now);
             await _sprintRepo.UpdateAsync(active, ct);
-            _logger.LogInformation("Sprint {SprintId} closed with {TicketCount} tickets", active.Id, tickets.Count);
+            SprintLog.Closed(_logger, active.Id, tickets.Count);
 
             await tx.CommitAsync(ct);
 
-            return ToolResult.Ok(new Dictionary<string, object>
-            {
-                ["message"] = "Sprint closed successfully.",
-                ["sprint_id"] = active.Id,
-                ["receipt"] = tickets.Select(t => new Dictionary<string, object>
-                {
-                    ["ticket_id"] = t.Id,
-                    ["status"] = t.Status.Value,
-                    ["title"] = t.Title
-                }).ToList<object>()
-            });
+            return ToolResult.Ok(new SprintClosedResponse(
+                "Sprint closed successfully.",
+                active.Id,
+                tickets.Select(t => new SprintReceiptItem(t.Id, t.Status.Value, t.Title)).ToList()
+            ));
         }
         finally
         {
