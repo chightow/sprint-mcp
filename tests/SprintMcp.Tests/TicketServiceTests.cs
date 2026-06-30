@@ -40,7 +40,7 @@ public class TicketServiceTests : IDisposable
                 .ReturnsAsync(true);
             checker = mock.Object;
         }
-        return new TicketService(
+        return new TicketService(new TicketServiceContext(
             new TicketRepository(ctx),
             new AcceptanceCriterionRepository(ctx),
             new DecisionRepository(ctx),
@@ -51,7 +51,8 @@ public class TicketServiceTests : IDisposable
             new IdempotencyService(new IdempotencyRepository(ctx, TimeProvider.System), TimeProvider.System),
             ".",
             TimeProvider.System,
-            new TicketLock());
+            new TicketLock(),
+            Mock.Of<ILogger<TicketService>>()));
     }
 
     private async Task<Sprint> SetupSprintAsync(AppDbContext ctx, string phase = "planning")

@@ -40,6 +40,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         var tierConverter = new ValueConverter<TicketTier, string>(
             v => v.Value, v => TicketTier.FromString(v));
 
+        var nullableDateTimeConverter = new ValueConverter<DateTime?, string>(
+            v => v.HasValue ? v.Value.ToString("O") : null!,
+            v => string.IsNullOrEmpty(v) ? null : DateTime.Parse(v, null, System.Globalization.DateTimeStyles.RoundtripKind));
+
         modelBuilder.Entity<Ticket>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -112,7 +116,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.RunId).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.Verdict).IsRequired().HasColumnType("TEXT").HasConversion(verdictConverter);
             entity.Property(e => e.Content).HasColumnType("TEXT");
-            entity.Property(e => e.MatchedRunTs).HasColumnType("TEXT");
+            entity.Property(e => e.MatchedRunTs).HasColumnType("TEXT").HasConversion(nullableDateTimeConverter);
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.UpdatedAt).IsRequired().HasColumnType("TEXT");
 

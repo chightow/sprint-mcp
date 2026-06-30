@@ -137,11 +137,9 @@ public class SprintService
             if (active is null)
                 return ToolResult.Error("No active sprint");
 
-            var task = await _activeTaskRepo.GetByIdAsync(taskId, ct);
-            if (task is null || task.SprintId != active.Id)
+            var deleted = await _activeTaskRepo.DeleteBySprintIdAndIdAsync(active.Id, taskId, ct);
+            if (!deleted)
                 return ToolResult.Error($"Task {taskId} not found in active sprint");
-
-            await _activeTaskRepo.DeleteByIdAsync(taskId, ct);
 
             return ToolResult.Ok(new Dictionary<string, object>
             {
@@ -333,7 +331,7 @@ public class SprintService
                 if (!await _runChecker.CheckRunAsync(epoch, _projectRoot, ct))
                     return ToolResult.Error($"Ticket {t.Id} cannot close: run-id '{report.RunId}' has no matching subagent entry.");
 
-                report.MatchedRunTs = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime.ToString("O");
+                report.MatchedRunTs = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime;
                 report.UpdatedAt = now;
                 await _evalReportRepo.UpsertAsync(report, ct);
             }

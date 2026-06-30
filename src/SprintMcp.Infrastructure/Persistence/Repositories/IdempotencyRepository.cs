@@ -20,12 +20,7 @@ public class IdempotencyRepository(AppDbContext db, TimeProvider timeProvider) :
         }
         else
         {
-            db.IdempotencyKeys.Add(new IdempotencyRecord
-            {
-                Key = key,
-                ResultJson = resultJson,
-                CreatedAt = timeProvider.GetUtcNow().UtcDateTime
-            });
+            db.IdempotencyKeys.Add(new IdempotencyRecord(key, resultJson));
         }
         await db.SaveChangesAsync(ct);
     }

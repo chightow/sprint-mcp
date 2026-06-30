@@ -33,4 +33,12 @@ public class ActiveTaskRepository(AppDbContext db) : IActiveTaskRepository
         await db.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task<bool> DeleteBySprintIdAndIdAsync(string sprintId, int id, CancellationToken ct = default)
+    {
+        var deleted = await db.ActiveTasks
+            .Where(t => t.SprintId == sprintId && t.Id == id)
+            .ExecuteDeleteAsync(ct);
+        return deleted > 0;
+    }
 }

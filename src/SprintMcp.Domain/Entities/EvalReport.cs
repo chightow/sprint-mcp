@@ -8,7 +8,7 @@ public class EvalReport
     public string RunId { get; private set; } = string.Empty;
     public Verdict Verdict { get; private set; } = Verdict.Pending;
     public string Content { get; private set; } = string.Empty;
-    public string? MatchedRunTs { get; set; }
+    public DateTime? MatchedRunTs { get; set; }
     public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

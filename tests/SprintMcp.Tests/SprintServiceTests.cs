@@ -383,7 +383,7 @@ public class SprintServiceTests : IDisposable
         var evalRepo = new EvalReportRepository(ctx);
         var evalReport = new EvalReport(ticket.Id, "1234567890-test-run", Verdict.Pass, "All good")
         {
-            MatchedRunTs = "2024-01-01T00:00:00.0000000Z"
+            MatchedRunTs = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc)
         };
         await evalRepo.UpsertAsync(evalReport);
 
