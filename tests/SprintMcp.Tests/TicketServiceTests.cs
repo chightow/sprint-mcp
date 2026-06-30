@@ -49,6 +49,7 @@ public class TicketServiceTests : IAsyncLifetime
                 .ReturnsAsync(true);
             checker = mock.Object;
         }
+        var (eventStore, invariantEngine) = EventTestHelpers.CreateEventDeps(ctx);
         return new TicketService(new TicketServiceContext(
             new TicketRepository(ctx),
             new AcceptanceCriterionRepository(ctx),
@@ -58,6 +59,8 @@ public class TicketServiceTests : IAsyncLifetime
             new SprintRepository(ctx),
             checker,
             new IdempotencyService(new IdempotencyRepository(ctx, TimeProvider.System), TimeProvider.System),
+            eventStore,
+            invariantEngine,
             ".",
             TimeProvider.System,
             new TicketLock(),

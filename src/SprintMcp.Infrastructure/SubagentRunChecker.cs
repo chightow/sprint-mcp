@@ -54,9 +54,7 @@ public class SubagentRunChecker : ISubagentRunChecker
 
                     if (TryParseTimestamp(ts) is { } entryEpoch)
                     {
-                        var diff = entryEpoch - runEpoch;
-                        if (diff < 0) diff = -diff;
-                        if (diff <= WindowSec)
+                        if (Math.Abs(entryEpoch - runEpoch) <= WindowSec)
                             return true;
                     }
                 }
@@ -73,16 +71,16 @@ public class SubagentRunChecker : ISubagentRunChecker
         return false;
     }
 
+    private static readonly string[] TimestampFormats =
+    [
+        "yyyy-MM-ddTHH:mm:ss.fffffffK",
+        "yyyy-MM-ddTHH:mm:ssK",
+        "yyyy-MM-ddTHH:mm:ss"
+    ];
+
     private static long? TryParseTimestamp(string ts)
     {
-        string[] formats =
-        [
-            "yyyy-MM-ddTHH:mm:ss.fffffffK",
-            "yyyy-MM-ddTHH:mm:ssK",
-            "yyyy-MM-ddTHH:mm:ss"
-        ];
-
-        foreach (var fmt in formats)
+        foreach (var fmt in TimestampFormats)
         {
             if (DateTimeOffset.TryParseExact(ts, fmt, CultureInfo.InvariantCulture,
                     DateTimeStyles.AssumeUniversal, out var dto))

@@ -13,6 +13,8 @@ public sealed record TicketServiceContext(
     ISprintRepository SprintRepo,
     ISubagentRunChecker RunChecker,
     IdempotencyService Idempotency,
+    IEventStore EventStore,
+    InvariantEngine InvariantEngine,
     string ProjectRoot,
     TimeProvider TimeProvider,
     ITicketLock TicketLock,

@@ -6,19 +6,15 @@ namespace SprintMcp.Server.Handlers;
 
 public static class HandlerUtils
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    public static CallToolResult ToMcpResult(this ToolResult result)
     {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-    };
-
-    public static CallToolResult ToResult(ToolResult result)
-    {
-        var json = JsonSerializer.Serialize(result, JsonOptions);
+        var json = JsonSerializer.Serialize(result, ToolResult.JsonOptions);
         return new CallToolResult
         {
             Content = [new TextContentBlock { Text = json }],
             IsError = result.Status == "error"
         };
     }
+
+    public static CallToolResult ToResult(ToolResult result) => result.ToMcpResult();
 }

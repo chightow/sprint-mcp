@@ -36,49 +36,46 @@ public class Ticket
         if (!Status.CanTransitionTo(newStatus))
             throw new InvalidOperationException($"Cannot transition from '{Status}' to '{newStatus}'.");
         Status = newStatus;
-        UpdatedAt = DateTime.UtcNow;
     }
 
     public void ChangePriority(Priority newPriority)
     {
         Priority = newPriority;
-        UpdatedAt = DateTime.UtcNow;
     }
 
     public void ChangeTier(TicketTier newTier)
     {
         Tier = newTier;
-        UpdatedAt = DateTime.UtcNow;
     }
 
     public void MarkPlanApproved(DateTime timestamp)
     {
         PlanApprovedAt = timestamp;
-        UpdatedAt = timestamp;
     }
 
     public void SetPlanApproach(string approach)
     {
         PlanApproach = approach;
-        UpdatedAt = DateTime.UtcNow;
     }
 
     public void SetPlanFiles(string files)
     {
         PlanFiles = files;
-        UpdatedAt = DateTime.UtcNow;
     }
 
     public void SetSummary(string summary)
     {
         Summary = summary;
-        UpdatedAt = DateTime.UtcNow;
     }
 
     public void AssignToSprint(string sprintId)
     {
         ValueObjects.SprintId.Validate(sprintId);
         SprintId = sprintId;
-        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void Touch(DateTime by)
+    {
+        UpdatedAt = by;
     }
 }

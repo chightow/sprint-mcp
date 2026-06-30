@@ -20,6 +20,7 @@ builder.Services
     .AddMcpServer()
     .WithTools<TicketHandler>()
     .WithTools<SprintHandler>()
+    .WithTools<EventToolHandler>()
     .WithStdioServerTransport();
 
 var app = builder.Build();

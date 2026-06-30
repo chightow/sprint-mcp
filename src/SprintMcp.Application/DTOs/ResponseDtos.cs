@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace SprintMcp.Application.DTOs;
@@ -192,4 +193,29 @@ public sealed record TaskAddedResponse(
 public sealed record TaskRemovedResponse(
     [property: JsonPropertyName("sprint_id")] string SprintId,
     [property: JsonPropertyName("removed_task_id")] int RemovedTaskId
+);
+
+public sealed record EventDto(
+    [property: JsonPropertyName("event_id")] long EventId,
+    [property: JsonPropertyName("event_type")] string EventType,
+    [property: JsonPropertyName("category")] string Category,
+    [property: JsonPropertyName("aggregate_type")] string AggregateType,
+    [property: JsonPropertyName("aggregate_id")] string AggregateId,
+    [property: JsonPropertyName("caused_by")] string[] CausedBy,
+    [property: JsonPropertyName("version")] long Version,
+    [property: JsonPropertyName("occurred_at")] string OccurredAt,
+    [property: JsonPropertyName("event_data")] JsonElement EventData
+);
+
+public sealed record ListEventsResponse(
+    [property: JsonPropertyName("events")] List<EventDto> Events,
+    [property: JsonPropertyName("has_more")] bool HasMore,
+    [property: JsonPropertyName("next_cursor")] long NextCursor
+);
+
+public sealed record ProposeEventResponse(
+    [property: JsonPropertyName("event_id")] long? EventId,
+    [property: JsonPropertyName("accepted")] bool Accepted,
+    [property: JsonPropertyName("rejection_reasons")] string[]? RejectionReasons,
+    [property: JsonPropertyName("version")] long Version
 );

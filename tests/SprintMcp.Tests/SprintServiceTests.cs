@@ -49,6 +49,7 @@ public class SprintServiceTests : IAsyncLifetime
                 .ReturnsAsync(true);
             checker = mock.Object;
         }
+        var (eventStore, invariantEngine) = EventTestHelpers.CreateEventDeps(ctx);
         return new SprintService(
             new TicketRepository(ctx),
             new SprintRepository(ctx),
@@ -57,6 +58,8 @@ public class SprintServiceTests : IAsyncLifetime
             new EvalReportRepository(ctx),
             checker,
             txManager ?? new MockTransactionManager(),
+            eventStore,
+            invariantEngine,
             Mock.Of<ILogger<SprintService>>(),
             ".",
             TimeProvider.System,

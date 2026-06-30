@@ -7,14 +7,8 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class TicketRepository(AppDbContext db) : ITicketRepository
 {
-    private static readonly SemaphoreSlim _idLock = CreateIdLock();
+    private static readonly SemaphoreSlim _idLock = new(1, 1);
 
-    private static SemaphoreSlim CreateIdLock()
-    {
-        var sem = new SemaphoreSlim(1, 1);
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => sem.Dispose();
-        return sem;
-    }
     public async Task<Ticket?> GetByIdAsync(string ticketId, CancellationToken ct = default)
     {
         return await db.Tickets.FirstOrDefaultAsync(t => t.Id == ticketId, ct);

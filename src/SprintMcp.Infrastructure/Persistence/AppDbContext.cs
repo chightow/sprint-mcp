@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SprintHandoff> SprintHandoffs => Set<SprintHandoff>();
     public DbSet<ActiveTask> ActiveTasks => Set<ActiveTask>();
     public DbSet<IdempotencyRecord> IdempotencyKeys => Set<IdempotencyRecord>();
+    public DbSet<Event> Events => Set<Event>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,7 +43,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         var nullableDateTimeConverter = new ValueConverter<DateTime?, string>(
             v => v.HasValue ? v.Value.ToString("O") : null!,
-            v => string.IsNullOrEmpty(v) ? null : DateTime.Parse(v, null, System.Globalization.DateTimeStyles.RoundtripKind));
+            v => string.IsNullOrEmpty(v) ? null : DateTime.Parse(v, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind));
 
         modelBuilder.Entity<Ticket>(entity =>
         {
@@ -168,6 +169,25 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.ResultJson).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
             entity.HasIndex(e => e.CreatedAt);
+        });
+
+        modelBuilder.Entity<Event>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.Property(e => e.EventType).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.Category).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.AggregateType).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.AggregateId).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.ProposedBy).HasColumnType("TEXT");
+            entity.Property(e => e.CausedBy).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.OccurredAt).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.EventData).IsRequired().HasColumnType("TEXT");
+            entity.Property(e => e.Signature).HasColumnType("TEXT");
+            entity.HasIndex(e => e.EventType);
+            entity.HasIndex(e => e.AggregateId);
+
+            entity.ToTable(t => t.HasCheckConstraint("CK_Event_Category", "Category IN ('domain','agent')"));
         });
     }
 }

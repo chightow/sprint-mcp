@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SprintMcp.Application.Abstractions;
 using SprintMcp.Application.DTOs;
@@ -9,6 +10,11 @@ namespace SprintMcp.Application.Services;
 
 public class SprintService
 {
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
     private readonly ITicketRepository _ticketRepo;
     private readonly ISprintRepository _sprintRepo;
     private readonly ISprintHandoffRepository _handoffRepo;
@@ -16,6 +22,8 @@ public class SprintService
     private readonly IEvalReportRepository _evalReportRepo;
     private readonly ISubagentRunChecker _runChecker;
     private readonly ITransactionManager _txManager;
+    private readonly IEventStore _eventStore;
+    private readonly InvariantEngine _invariantEngine;
     private readonly ILogger<SprintService> _logger;
     private readonly string _projectRoot;
     private readonly TimeProvider _timeProvider;
@@ -29,6 +37,8 @@ public class SprintService
         IEvalReportRepository evalReportRepo,
         ISubagentRunChecker runChecker,
         ITransactionManager txManager,
+        IEventStore eventStore,
+        InvariantEngine invariantEngine,
         ILogger<SprintService> logger,
         string projectRoot,
         TimeProvider timeProvider,
@@ -41,13 +51,22 @@ public class SprintService
         _evalReportRepo = evalReportRepo;
         _runChecker = runChecker;
         _txManager = txManager;
+        _eventStore = eventStore;
+        _invariantEngine = invariantEngine;
         _logger = logger;
         _projectRoot = projectRoot;
         _timeProvider = timeProvider;
         _sprintLock = sprintLock;
     }
 
-    public async Task<ToolResult> UpdateHandoffAsync(string? currentFocus, string? inProgress, string? discoveries, string? nextSteps, CancellationToken ct = default)
+    private static Event DomainEvent(string eventType, string aggregateType, string aggregateId,
+        string[]? causedBy, DateTime occurredAt, object payload)
+    {
+        var payloadJson = JsonSerializer.Serialize(payload, PayloadJsonOptions);
+        return new Event(eventType, "domain", aggregateType, aggregateId, null, causedBy ?? [], occurredAt, payloadJson);
+    }
+
+    public async Task<ToolResult> UpdateHandoffAsync(string? currentFocus, string? inProgress, string? discoveries, string? nextSteps, string[]? causedBy = null, CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
         try
@@ -74,6 +93,10 @@ public class SprintService
             if (discoveries is not null) handoff.UpdateDiscoveries(discoveries, now);
             if (nextSteps is not null) handoff.UpdateNextSteps(nextSteps, now);
 
+            var evt = DomainEvent("SprintHandoffUpdated", "sprint", active.Id, causedBy, now,
+                new { sprint_id = active.Id });
+            _eventStore.Track(evt);
+
             await _handoffRepo.UpsertAsync(handoff, ct);
 
             return ToolResult.Ok(new HandoffUpdatedResponse(
@@ -82,7 +105,7 @@ public class SprintService
                 handoff.InProgress,
                 handoff.Discoveries,
                 handoff.NextSteps
-            ));
+            ), evt.Id);
         }
         finally
         {
@@ -90,7 +113,7 @@ public class SprintService
         }
     }
 
-    public async Task<ToolResult> AddActiveTaskAsync(string taskRef, CancellationToken ct = default)
+    public async Task<ToolResult> AddActiveTaskAsync(string taskRef, string[]? causedBy = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(taskRef))
             return ToolResult.Error("Task reference cannot be empty");
@@ -108,9 +131,15 @@ public class SprintService
             var maxOrdinal = tasks.Count > 0 ? tasks.Max(t => t.Ordinal) : 0;
 
             var task = new ActiveTask(active.Id, taskRef, maxOrdinal + 1);
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var evt = DomainEvent("ActiveTaskAdded", "sprint", active.Id, causedBy, now,
+                new { sprint_id = active.Id, task_ref = taskRef, ordinal = task.Ordinal });
+            _eventStore.Track(evt);
+
             await _activeTaskRepo.AddAsync(task, ct);
 
-            return ToolResult.Ok(new TaskAddedResponse(active.Id, task.Id, taskRef));
+            return ToolResult.Ok(new TaskAddedResponse(active.Id, task.Id, taskRef), evt.Id);
         }
         finally
         {
@@ -118,7 +147,7 @@ public class SprintService
         }
     }
 
-    public async Task<ToolResult> RemoveActiveTaskAsync(int taskId, CancellationToken ct = default)
+    public async Task<ToolResult> RemoveActiveTaskAsync(int taskId, string[]? causedBy = null, CancellationToken ct = default)
     {
         if (taskId <= 0)
             return ToolResult.Error("Invalid task ID");
@@ -134,7 +163,12 @@ public class SprintService
             if (!deleted)
                 return ToolResult.Error($"Task {taskId} not found in active sprint");
 
-            return ToolResult.Ok(new TaskRemovedResponse(active.Id, taskId));
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var evt = DomainEvent("ActiveTaskRemoved", "sprint", active.Id, causedBy, now,
+                new { sprint_id = active.Id, task_id = taskId });
+            var saved = await _eventStore.AppendAsync(evt, ct);
+
+            return ToolResult.Ok(new TaskRemovedResponse(active.Id, taskId), saved.Id);
         }
         finally
         {
@@ -142,7 +176,7 @@ public class SprintService
         }
     }
 
-    public async Task<ToolResult> StartSprintAsync(string? title, string? ticketId, string priority, CancellationToken ct = default)
+    public async Task<ToolResult> StartSprintAsync(string? title, string? ticketId, string priority, string[]? causedBy = null, CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
         try
@@ -180,12 +214,19 @@ public class SprintService
             var sprint = await _sprintRepo.CreateNextAsync(ct);
             var sprintId = sprint.Id;
 
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
             ticket.AssignToSprint(sprintId);
+            ticket.Touch(now);
+
+            var evt = DomainEvent("SprintStarted", "sprint", sprintId, causedBy, now,
+                new { sprint_id = sprintId, ticket_id = tid });
+            _eventStore.Track(evt);
+
             await _ticketRepo.UpdateAsync(ticket, ct);
 
             await tx.CommitAsync(ct);
 
-            return ToolResult.Ok(new SprintStartedResponse(tid, sprintId, $"Sprint started: {sprintId}"));
+            return ToolResult.Ok(new SprintStartedResponse(tid, sprintId, $"Sprint started: {sprintId}"), evt.Id);
         }
         finally
         {
@@ -223,7 +264,7 @@ public class SprintService
         ));
     }
 
-    public async Task<ToolResult> AdvancePhaseAsync(CancellationToken ct = default)
+    public async Task<ToolResult> AdvancePhaseAsync(string[]? causedBy = null, CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
         try
@@ -232,6 +273,7 @@ public class SprintService
             if (active is null)
                 return ToolResult.Error("No active sprint");
 
+            var fromPhase = active.Phase.Value;
             try
             {
                 active.AdvancePhase();
@@ -241,9 +283,14 @@ public class SprintService
                 return ToolResult.Error(ex.Message);
             }
 
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var evt = DomainEvent("PhaseAdvanced", "sprint", active.Id, causedBy, now,
+                new { sprint_id = active.Id, from = fromPhase, to = active.Phase.Value });
+            _eventStore.Track(evt);
+
             await _sprintRepo.UpdateAsync(active, ct);
 
-            return ToolResult.Ok(new SprintAdvancedResponse(active.Id, active.Phase.Value));
+            return ToolResult.Ok(new SprintAdvancedResponse(active.Id, active.Phase.Value), evt.Id);
         }
         finally
         {
@@ -251,13 +298,11 @@ public class SprintService
         }
     }
 
-    public async Task<ToolResult> CloseSprintAsync(CancellationToken ct = default)
+    public async Task<ToolResult> CloseSprintAsync(string[]? causedBy = null, CancellationToken ct = default)
     {
         await _sprintLock.WaitAsync(ct);
         try
         {
-            await using var tx = await _txManager.BeginAsync(ct);
-
             var active = await _sprintRepo.GetActiveAsync(ct);
             if (active is null)
                 return ToolResult.Error("No active sprint to close");
@@ -275,6 +320,7 @@ public class SprintService
                 return ToolResult.Error($"Cannot close sprint. Non-terminal tickets: {string.Join(", ", incomplete)}");
 
             var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var matchedReports = new List<(EvalReport report, long epoch)>();
             foreach (var t in nonTrivial)
             {
                 var report = await _evalReportRepo.GetByTicketIdAsync(t.Id, ct);
@@ -294,11 +340,22 @@ public class SprintService
                 if (!await _runChecker.CheckRunAsync(epoch, _projectRoot, ct))
                     return ToolResult.Error($"Ticket {t.Id} cannot close: run-id '{report.RunId}' has no matching subagent entry.");
 
+                matchedReports.Add((report, epoch));
+            }
+
+            await using var tx = await _txManager.BeginAsync(ct);
+            foreach (var (report, epoch) in matchedReports)
+            {
                 report.MarkRunMatched(DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime, now);
                 await _evalReportRepo.UpsertAsync(report, ct);
             }
 
             active.Close(now);
+
+            var evt = DomainEvent("SprintClosed", "sprint", active.Id, causedBy, now,
+                new { sprint_id = active.Id, ticket_count = tickets.Count });
+            _eventStore.Track(evt);
+
             await _sprintRepo.UpdateAsync(active, ct);
             SprintLog.Closed(_logger, active.Id, tickets.Count);
 
@@ -308,7 +365,7 @@ public class SprintService
                 "Sprint closed successfully.",
                 active.Id,
                 tickets.Select(t => new SprintReceiptItem(t.Id, t.Status.Value, t.Title)).ToList()
-            ));
+            ), evt.Id);
         }
         finally
         {

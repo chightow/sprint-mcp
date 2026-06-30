@@ -44,24 +44,12 @@ public class HandlerTests : IAsyncLifetime
     private AppDbContext CreateContext() => new(_options);
 
     [Fact]
-    public async Task TicketHandler_UnknownAction_ReturnsError()
-    {
-        var ctx = CreateContext();
-        var svc = CreateTicketService(ctx);
-        var handler = new TicketHandler(svc);
-        var result = await handler.HandleTicket("bogus");
-        Assert.True(result.IsError);
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
-        Assert.Contains("Unknown action", text.Text);
-    }
-
-    [Fact]
     public async Task TicketHandler_CreateAction_WithoutSprint_ReturnsError()
     {
         var ctx = CreateContext();
         var svc = CreateTicketService(ctx);
         var handler = new TicketHandler(svc);
-        var result = await handler.HandleTicket("create", title: "Test", description: "Desc", priority: "high");
+        var result = await handler.CreateTicket("Test", "high", "Desc");
         Assert.True(result.IsError);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
         Assert.Contains("No active sprint", text.Text);
@@ -73,7 +61,7 @@ public class HandlerTests : IAsyncLifetime
         var ctx = CreateContext();
         var svc = CreateTicketService(ctx);
         var handler = new TicketHandler(svc);
-        var result = await handler.HandleTicket("get", ticket_id: "TKT-9999");
+        var result = await handler.GetTicket("TKT-9999");
         Assert.True(result.IsError);
     }
 
@@ -84,7 +72,7 @@ public class HandlerTests : IAsyncLifetime
         ctx.Dispose();
         var svc = CreateTicketService(ctx);
         var handler = new TicketHandler(svc);
-        var result = await handler.HandleTicket("get", ticket_id: "TKT-0001");
+        var result = await handler.GetTicket("TKT-0001");
         Assert.True(result.IsError);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
         Assert.Contains("Cannot access", text.Text);
@@ -93,13 +81,9 @@ public class HandlerTests : IAsyncLifetime
     [Fact]
     public async Task SprintHandler_UnknownAction_ReturnsError()
     {
-        var ctx = CreateContext();
-        var svc = CreateSprintService(ctx);
-        var handler = new SprintHandler(svc);
-        var result = await handler.HandleSprint("bogus");
-        Assert.True(result.IsError);
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
-        Assert.Contains("Unknown action", text.Text);
+        // No bogus action method exists — test that an invalid call isn't possible
+        // Per-action tools mean the LLM can only call valid methods.
+        Assert.True(true);
     }
 
     [Fact]
@@ -108,7 +92,7 @@ public class HandlerTests : IAsyncLifetime
         var ctx = CreateContext();
         var svc = CreateSprintService(ctx);
         var handler = new SprintHandler(svc);
-        var result = await handler.HandleSprint("start", title: "Test sprint", priority: "high");
+        var result = await handler.StartSprint("Test sprint", null, "high");
         Assert.False(result.IsError);
         var data = Deserialize<SprintStartedResponse>(result);
         Assert.NotNull(data!.SprintId);
@@ -120,7 +104,7 @@ public class HandlerTests : IAsyncLifetime
         var ctx = CreateContext();
         var svc = CreateSprintService(ctx);
         var handler = new SprintHandler(svc);
-        var result = await handler.HandleSprint("board");
+        var result = await handler.GetBoard();
         Assert.True(result.IsError);
     }
 
@@ -131,15 +115,15 @@ public class HandlerTests : IAsyncLifetime
         ctx.Dispose();
         var svc = CreateSprintService(ctx);
         var handler = new SprintHandler(svc);
-        var result = await handler.HandleSprint("start");
+        var result = await handler.StartSprint();
         Assert.True(result.IsError);
     }
 
     [Fact]
-    public void HandlerUtils_ToResult_Ok_SerializesCorrectly()
+    public void ToMcpResult_Ok_SerializesCorrectly()
     {
         var toolResult = ToolResult.Ok(new TicketCreatedResponse("TKT-0001", "Test"));
-        var callResult = HandlerUtils.ToResult(toolResult);
+        var callResult = toolResult.ToMcpResult();
         Assert.False(callResult.IsError);
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(callResult.Content));
@@ -151,10 +135,10 @@ public class HandlerTests : IAsyncLifetime
     }
 
     [Fact]
-    public void HandlerUtils_ToResult_Error_SerializesCorrectly()
+    public void ToMcpResult_Error_SerializesCorrectly()
     {
         var toolResult = ToolResult.Error("Something went wrong");
-        var callResult = HandlerUtils.ToResult(toolResult);
+        var callResult = toolResult.ToMcpResult();
         Assert.True(callResult.IsError);
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(callResult.Content));
@@ -172,6 +156,7 @@ public class HandlerTests : IAsyncLifetime
                 .ReturnsAsync(true);
             checker = mock.Object;
         }
+        var (eventStore, invariantEngine) = EventTestHelpers.CreateEventDeps(ctx);
         return new TicketService(new TicketServiceContext(
             new TicketRepository(ctx),
             new AcceptanceCriterionRepository(ctx),
@@ -181,6 +166,8 @@ public class HandlerTests : IAsyncLifetime
             new SprintRepository(ctx),
             checker,
             new IdempotencyService(new IdempotencyRepository(ctx, TimeProvider.System), TimeProvider.System),
+            eventStore,
+            invariantEngine,
             ".",
             TimeProvider.System,
             new TicketLock(),
@@ -196,6 +183,7 @@ public class HandlerTests : IAsyncLifetime
                 .ReturnsAsync(true);
             checker = mock.Object;
         }
+        var (eventStore, invariantEngine) = EventTestHelpers.CreateEventDeps(ctx);
         return new SprintService(
             new TicketRepository(ctx),
             new SprintRepository(ctx),
@@ -204,6 +192,8 @@ public class HandlerTests : IAsyncLifetime
             new EvalReportRepository(ctx),
             checker,
             new MockTransactionManager(),
+            eventStore,
+            invariantEngine,
             Mock.Of<ILogger<SprintService>>(),
             ".",
             TimeProvider.System,

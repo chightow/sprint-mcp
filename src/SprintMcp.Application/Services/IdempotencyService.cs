@@ -36,7 +36,7 @@ public class IdempotencyService
 
         try
         {
-            return JsonSerializer.Deserialize<ToolResult>(cached.ResultJson);
+            return JsonSerializer.Deserialize<ToolResult>(cached.ResultJson, ToolResult.JsonOptions);
         }
         catch (JsonException)
         {
@@ -48,7 +48,7 @@ public class IdempotencyService
     public async Task StoreAsync(string? key, ToolResult result, CancellationToken ct = default)
     {
         if (key is null) return;
-        var json = JsonSerializer.Serialize(result);
+        var json = JsonSerializer.Serialize(result, ToolResult.JsonOptions);
         await _repo.StoreAsync(key, json, ct);
     }
 }

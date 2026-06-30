@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using SprintMcp.Application.Abstractions;
@@ -14,14 +15,41 @@ public partial class TicketService
 
     private static readonly Regex RunIdPattern = RunIdRegex();
 
-    [GeneratedRegex(@"^\d{1,10}-.+$")]
-    private static partial Regex RunIdRegex();
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
 
     private readonly TicketServiceContext _ctx;
 
     public TicketService(TicketServiceContext ctx)
     {
         _ctx = ctx;
+    }
+
+    [GeneratedRegex(@"^\d{1,10}-.+$")]
+    private static partial Regex RunIdRegex();
+
+    private static Event DomainEvent(string eventType, string aggregateType, string aggregateId,
+        string[]? causedBy, DateTime occurredAt, object payload)
+    {
+        var payloadJson = JsonSerializer.Serialize(payload, PayloadJsonOptions);
+        return new Event(eventType, "domain", aggregateType, aggregateId, null, causedBy ?? [], occurredAt, payloadJson);
+    }
+
+    private async Task<ToolResult> AppendAndWrapAsync(ToolResult result, Event evt, CancellationToken ct)
+    {
+        var check = await _ctx.InvariantEngine.CheckAsync(evt, ct);
+        if (!check.Valid)
+            return ToolResult.Error(check.Failure!);
+        var saved = await _ctx.EventStore.AppendAsync(evt, ct);
+        return result with { EventId = saved.Id };
+    }
+
+    private ToolResult TrackAndWrap(ToolResult result, Event evt)
+    {
+        _ctx.EventStore.Track(evt);
+        return result with { EventId = evt.Id };
     }
 
     private async Task<(ToolResult? Error, Sprint? Sprint)> RequirePhaseAsync(SprintPhase requiredPhase, CancellationToken ct)
@@ -34,7 +62,7 @@ public partial class TicketService
         return (null, active);
     }
 
-    public async Task<ToolResult> CreateTicketAsync(string title, string description, string priority, string? idempotencyKey = null, CancellationToken ct = default)
+    public async Task<ToolResult> CreateTicketAsync(string title, string description, string priority, string? idempotencyKey = null, string[]? causedBy = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(title))
             return ToolResult.Error("Title cannot be empty");
@@ -50,21 +78,25 @@ public partial class TicketService
         var (phaseError, active) = await RequirePhaseAsync(SprintPhase.Planning, ct);
         if (phaseError is not null) return phaseError;
 
-        var sprintTickets = await _ctx.TicketRepo.GetBySprintIdAsync(active!.Id, ct);
-        if (sprintTickets.Count >= MaxTicketsPerSprint)
-            return ToolResult.Error($"Sprint '{active.Id}' already has {MaxTicketsPerSprint} tickets. Cannot create more.");
-
         await _ctx.TicketLock.WaitAsync(ct);
         try
         {
             var cached = await _ctx.Idempotency.CheckAsync(idempotencyKey, ct);
             if (cached is not null) return cached;
 
+            var sprintTickets = await _ctx.TicketRepo.GetBySprintIdAsync(active!.Id, ct);
+            if (sprintTickets.Count >= MaxTicketsPerSprint)
+                return ToolResult.Error($"Sprint '{active.Id}' already has {MaxTicketsPerSprint} tickets. Cannot create more.");
+
             var ticket = await _ctx.TicketRepo.CreateAsync(title, description ?? "", prio, ct);
 
             var result = ToolResult.Ok(new TicketCreatedResponse(ticket.Id, ticket.Title));
             await _ctx.Idempotency.StoreAsync(idempotencyKey, result, ct);
             TicketLog.Created(_ctx.Logger, ticket.Id, ticket.Title);
+
+            var evt = DomainEvent("TicketCreated", "ticket", ticket.Id, causedBy, ticket.CreatedAt,
+                new { ticket_id = ticket.Id, title = ticket.Title, priority = prio.Value });
+            result = await AppendAndWrapAsync(result, evt, ct);
             return result;
         }
         finally
@@ -112,7 +144,7 @@ public partial class TicketService
         ));
     }
 
-    public async Task<ToolResult> UpdateStatusAsync(string ticketId, string newStatus, CancellationToken ct = default)
+    public async Task<ToolResult> UpdateStatusAsync(string ticketId, string newStatus, string[]? causedBy = null, CancellationToken ct = default)
     {
         var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing, ct);
         if (phaseError is not null) return phaseError;
@@ -134,12 +166,22 @@ public partial class TicketService
             if (!ticket.Status.CanTransitionTo(status))
                 return ToolResult.Error($"Cannot transition from '{ticket.Status}' to '{status}'.");
 
+            var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            var evt = DomainEvent("TicketStatusChanged", "ticket", ticketId, causedBy, now,
+                new { ticket_id = ticketId, from = ticket.Status.Value, to = status.Value });
+
+            var check = await _ctx.InvariantEngine.CheckAsync(evt, ct);
+            if (!check.Valid)
+                return ToolResult.Error(check.Failure!);
+
             ticket.ChangeStatus(status);
+            ticket.Touch(now);
+            _ctx.EventStore.Track(evt);
             await _ctx.TicketRepo.UpdateAsync(ticket, ct);
 
             TicketLog.StatusChanged(_ctx.Logger, ticketId, status.Value);
 
-            return ToolResult.Ok(new TicketStatusResponse(ticketId, status.Value));
+            return ToolResult.Ok(new TicketStatusResponse(ticketId, status.Value), evt.Id);
         }
         finally
         {
@@ -147,7 +189,7 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> AddCriterionAsync(string ticketId, string criterionText, string? idempotencyKey = null, CancellationToken ct = default)
+    public async Task<ToolResult> AddCriterionAsync(string ticketId, string criterionText, string? idempotencyKey = null, string[]? causedBy = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(criterionText))
             return ToolResult.Error("Criterion text cannot be empty");
@@ -169,9 +211,15 @@ public partial class TicketService
 
             var ordinal = await _ctx.CriterionRepo.GetNextOrdinalAsync(ticketId, ct);
             var criterion = new AcceptanceCriterion(ticketId, ordinal, criterionText);
+
+            var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            var evt = DomainEvent("CriterionAdded", "ticket", ticketId, causedBy, now,
+                new { ticket_id = ticketId, ordinal, text = criterionText });
+            _ctx.EventStore.Track(evt);
+
             await _ctx.CriterionRepo.AddAsync(criterion, ct);
 
-            var result = ToolResult.Ok(new CriterionAddedResponse(ticketId, criterionText, ordinal));
+            var result = ToolResult.Ok(new CriterionAddedResponse(ticketId, criterionText, ordinal), evt.Id);
             await _ctx.Idempotency.StoreAsync(idempotencyKey, result, ct);
             return result;
         }
@@ -181,7 +229,7 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> CheckCriterionAsync(string ticketId, int? criterionId, int? ordinal, bool satisfied = true, CancellationToken ct = default)
+    public async Task<ToolResult> CheckCriterionAsync(string ticketId, int? criterionId, int? ordinal, bool satisfied = true, string[]? causedBy = null, CancellationToken ct = default)
     {
         var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing, ct);
         if (phaseError is not null) return phaseError;
@@ -205,9 +253,15 @@ public partial class TicketService
                     : $"Criterion not found (id={criterionId}, ordinal={ordinal})");
 
             target.Satisfied = satisfied;
+
+            var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            var evt = DomainEvent("CriterionChecked", "ticket", ticketId, causedBy, now,
+                new { ticket_id = ticketId, criterion_id = target.Id, ordinal = target.Ordinal, satisfied });
+            _ctx.EventStore.Track(evt);
+
             await _ctx.CriterionRepo.UpdateAsync(target, ct);
 
-            return ToolResult.Ok(new CriterionCheckedResponse(ticketId, target.Id, target.Ordinal, target.Satisfied));
+            return ToolResult.Ok(new CriterionCheckedResponse(ticketId, target.Id, target.Ordinal, target.Satisfied), evt.Id);
         }
         finally
         {
@@ -215,7 +269,7 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> SetPlanAsync(string ticketId, string? tier, string? approach, string? files, bool approve = false, CancellationToken ct = default)
+    public async Task<ToolResult> SetPlanAsync(string ticketId, string? tier, string? approach, string? files, bool approve = false, string[]? causedBy = null, CancellationToken ct = default)
     {
         var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning, ct);
         if (phaseError is not null) return phaseError;
@@ -247,11 +301,31 @@ public partial class TicketService
                     return ToolResult.Error($"Plan files exceeds {FieldLimits.PlanFilesMax} characters");
                 ticket.SetPlanFiles(files);
             }
-            if (approve) ticket.MarkPlanApproved(_ctx.TimeProvider.GetUtcNow().UtcDateTime);
 
+            var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            long? lastEventId = null;
+
+            if (tier is not null || approach is not null || files is not null)
+            {
+                var planEvt = DomainEvent("TicketPlanSet", "ticket", ticketId, causedBy, now,
+                    new { ticket_id = ticketId, tier = ticket.Tier.Value, approach = ticket.PlanApproach, files = ticket.PlanFiles });
+                _ctx.EventStore.Track(planEvt);
+                lastEventId = planEvt.Id;
+            }
+
+            if (approve)
+            {
+                ticket.MarkPlanApproved(now);
+                var approveEvt = DomainEvent("TicketPlanApproved", "ticket", ticketId, causedBy, now,
+                    new { ticket_id = ticketId });
+                _ctx.EventStore.Track(approveEvt);
+                lastEventId = approveEvt.Id;
+            }
+
+            ticket.Touch(now);
             await _ctx.TicketRepo.UpdateAsync(ticket, ct);
 
-            return ToolResult.Ok(new PlanSetResponse(ticketId, ticket.Tier.Value, ticket.PlanApprovedAt.HasValue));
+            return ToolResult.Ok(new PlanSetResponse(ticketId, ticket.Tier.Value, ticket.PlanApprovedAt.HasValue), lastEventId);
         }
         finally
         {
@@ -259,7 +333,7 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> AddDecisionAsync(string ticketId, string title, string rationale, string? idempotencyKey = null, CancellationToken ct = default)
+    public async Task<ToolResult> AddDecisionAsync(string ticketId, string title, string rationale, string? idempotencyKey = null, string[]? causedBy = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(title))
             return ToolResult.Error("Decision title cannot be empty");
@@ -282,9 +356,15 @@ public partial class TicketService
                 return ToolResult.Error($"Ticket '{ticketId}' not found");
 
             var decision = new Decision(ticketId, title, rationale ?? "");
+
+            var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            var evt = DomainEvent("DecisionRecorded", "ticket", ticketId, causedBy, now,
+                new { ticket_id = ticketId, title, rationale = rationale ?? "" });
+            _ctx.EventStore.Track(evt);
+
             await _ctx.DecisionRepo.AddAsync(decision, ct);
 
-            var result = ToolResult.Ok(new DecisionAddedResponse(ticketId, title));
+            var result = ToolResult.Ok(new DecisionAddedResponse(ticketId, title), evt.Id);
             await _ctx.Idempotency.StoreAsync(idempotencyKey, result, ct);
             return result;
         }
@@ -294,7 +374,7 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> AddTestAsync(string ticketId, string description, string expected, CancellationToken ct = default)
+    public async Task<ToolResult> AddTestAsync(string ticketId, string description, string expected, string[]? causedBy = null, CancellationToken ct = default)
     {
         var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning, ct);
         if (phaseError is not null) return phaseError;
@@ -315,9 +395,15 @@ public partial class TicketService
 
             var ordinal = await _ctx.TestPlanRepo.GetNextOrdinalAsync(ticketId, ct);
             var item = new TestPlanItem(ticketId, ordinal, description, expected ?? "");
+
+            var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            var evt = DomainEvent("TestPlanUpdated", "ticket", ticketId, causedBy, now,
+                new { ticket_id = ticketId, ordinal, description, expected = expected ?? "", action = "added" });
+            _ctx.EventStore.Track(evt);
+
             await _ctx.TestPlanRepo.AddAsync(item, ct);
 
-            return ToolResult.Ok(new TestAddedResponse(ticketId, ordinal, description));
+            return ToolResult.Ok(new TestAddedResponse(ticketId, ordinal, description), evt.Id);
         }
         finally
         {
@@ -325,7 +411,7 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> UpdateTestAsync(string ticketId, int ordinal, string status, CancellationToken ct = default)
+    public async Task<ToolResult> UpdateTestAsync(string ticketId, int ordinal, string status, string[]? causedBy = null, CancellationToken ct = default)
     {
         var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing, ct);
         if (phaseError is not null) return phaseError;
@@ -346,10 +432,16 @@ public partial class TicketService
                 return ToolResult.Error($"Test plan item {ordinal} not found for ticket {ticketId}");
 
             item.Status = testStatus;
-            item.UpdatedAt = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            item.UpdatedAt = now;
+
+            var evt = DomainEvent("TestPlanUpdated", "ticket", ticketId, causedBy, now,
+                new { ticket_id = ticketId, ordinal, status = item.Status.Value, action = "updated" });
+            _ctx.EventStore.Track(evt);
+
             await _ctx.TestPlanRepo.UpdateAsync(item, ct);
 
-            return ToolResult.Ok(new TestUpdatedResponse(ticketId, ordinal, item.Status.Value));
+            return ToolResult.Ok(new TestUpdatedResponse(ticketId, ordinal, item.Status.Value), evt.Id);
         }
         finally
         {
@@ -357,7 +449,7 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> SetSummaryAsync(string ticketId, string summary, CancellationToken ct = default)
+    public async Task<ToolResult> SetSummaryAsync(string ticketId, string summary, string[]? causedBy = null, CancellationToken ct = default)
     {
         var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Evaluating, ct);
         if (phaseError is not null) return phaseError;
@@ -372,10 +464,17 @@ public partial class TicketService
             if (summary?.Length > FieldLimits.SummaryMax)
                 return ToolResult.Error($"Summary exceeds {FieldLimits.SummaryMax} characters");
 
+            var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
             ticket.SetSummary(summary ?? "");
+            ticket.Touch(now);
+
+            var evt = DomainEvent("SummarySet", "ticket", ticketId, causedBy, now,
+                new { ticket_id = ticketId });
+            _ctx.EventStore.Track(evt);
+
             await _ctx.TicketRepo.UpdateAsync(ticket, ct);
 
-            return ToolResult.Ok(new SummarySetResponse(ticketId));
+            return ToolResult.Ok(new SummarySetResponse(ticketId), evt.Id);
         }
         finally
         {
@@ -383,7 +482,7 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> SetEvalAsync(string ticketId, string runId, string verdict, string content, string? idempotencyKey = null, CancellationToken ct = default)
+    public async Task<ToolResult> SetEvalAsync(string ticketId, string runId, string verdict, string content, string? idempotencyKey = null, string[]? causedBy = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(runId) || !RunIdPattern.IsMatch(runId))
             return ToolResult.Error($"Invalid run ID '{runId}'. Expected format: <epoch>-<slug>");
@@ -418,9 +517,14 @@ public partial class TicketService
             var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
             var matchedRunTs = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime;
             var report = new EvalReport(ticketId, runId, parsedVerdict, content ?? "", matchedRunTs, now);
+
+            var evt = DomainEvent("EvalVerdictRecorded", "ticket", ticketId, causedBy, now,
+                new { ticket_id = ticketId, run_id = runId, verdict = parsedVerdict.Value });
+            _ctx.EventStore.Track(evt);
+
             await _ctx.EvalReportRepo.UpsertAsync(report, ct);
 
-            var result = ToolResult.Ok(new EvalSetResponse(ticketId, runId, verdict));
+            var result = ToolResult.Ok(new EvalSetResponse(ticketId, runId, verdict), evt.Id);
             await _ctx.Idempotency.StoreAsync(idempotencyKey, result, ct);
             TicketLog.EvalSet(_ctx.Logger, ticketId, runId, verdict);
             return result;

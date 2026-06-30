@@ -22,10 +22,12 @@ public static class DependencyInjection
         services.AddScoped<ISprintRepository, SprintRepository>();
         services.AddScoped<ISprintHandoffRepository, SprintHandoffRepository>();
         services.AddScoped<IActiveTaskRepository, ActiveTaskRepository>();
+        services.AddScoped<IEventStore, EventStore>();
 
         services.AddScoped<ISubagentRunChecker, SubagentRunChecker>();
         services.AddScoped<ITransactionManager, TransactionManager>();
         services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
+        services.AddScoped<IInvariantContext, InvariantContext>();
 
         return services;
     }

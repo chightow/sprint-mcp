@@ -99,3 +99,18 @@ CREATE TABLE IF NOT EXISTS IdempotencyKeys (
     CreatedAt   TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS IX_IdempotencyKeys_CreatedAt ON IdempotencyKeys(CreatedAt);
+
+CREATE TABLE IF NOT EXISTS Events (
+    Id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    EventType     TEXT    NOT NULL,
+    Category      TEXT    NOT NULL CHECK (Category IN ('domain','agent')),
+    AggregateType TEXT    NOT NULL,
+    AggregateId   TEXT    NOT NULL,
+    ProposedBy    TEXT    NULL,
+    CausedBy      TEXT    NOT NULL DEFAULT '[]',
+    OccurredAt    TEXT    NOT NULL,
+    EventData     TEXT    NOT NULL DEFAULT '{{}}',
+    Signature     TEXT    NULL
+);
+CREATE INDEX IF NOT EXISTS IX_Events_EventType ON Events(EventType);
+CREATE INDEX IF NOT EXISTS IX_Events_AggregateId ON Events(AggregateId);
