@@ -4,6 +4,6 @@ namespace SprintMcp.Domain.Repositories;
 
 public interface IEvalReportRepository
 {
-    Task<EvalReport?> GetByTicketIdAsync(string ticketId);
-    Task UpsertAsync(EvalReport report);
+    Task<EvalReport?> GetByTicketIdAsync(string ticketId, CancellationToken ct = default);
+    Task UpsertAsync(EvalReport report, CancellationToken ct = default);
 }

@@ -1,5 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Moq;
 using SprintMcp.Application.Services;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Infrastructure.Persistence;
@@ -32,7 +34,8 @@ public class TicketServiceTests : IDisposable
         new AcceptanceCriterionRepository(ctx),
         new DecisionRepository(ctx),
         new TestPlanItemRepository(ctx),
-        new EvalReportRepository(ctx));
+        new EvalReportRepository(ctx),
+        Mock.Of<ILogger<TicketService>>());
 
     [Fact]
     public async Task GetTicket_NotFound_ReturnsError()
@@ -189,5 +192,60 @@ public class TicketServiceTests : IDisposable
         var svc = CreateService(ctx);
         var result = await svc.SetEvalAsync(ticket.Id, "run-1", "bogus", "");
         Assert.Equal("error", result.Status);
+    }
+
+    [Fact]
+    public async Task CreateTicket_Valid_Succeeds()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        var result = await svc.CreateTicketAsync("New ticket", "A description", "high");
+        Assert.Equal("ok", result.Status);
+        Assert.NotNull(result.Data["ticket_id"]);
+        Assert.Equal("New ticket", result.Data["title"]);
+    }
+
+    [Fact]
+    public async Task CreateTicket_EmptyTitle_ReturnsError()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        var result = await svc.CreateTicketAsync("", "Desc", "medium");
+        Assert.Equal("error", result.Status);
+    }
+
+    [Fact]
+    public async Task CreateTicket_InvalidPriority_ReturnsError()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        var result = await svc.CreateTicketAsync("Test", "Desc", "bogus");
+        Assert.Equal("error", result.Status);
+    }
+
+    [Fact]
+    public async Task ListTickets_ReturnsAll()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        var repo = new TicketRepository(ctx);
+        await repo.CreateAsync("First", "Desc");
+        await repo.CreateAsync("Second", "Desc");
+
+        var result = await svc.ListTicketsAsync();
+        Assert.Equal("ok", result.Status);
+        var tickets = (List<object>)result.Data["tickets"];
+        Assert.Equal(2, tickets.Count);
+    }
+
+    [Fact]
+    public async Task ListTickets_Empty_ReturnsEmptyList()
+    {
+        using var ctx = CreateContext();
+        var svc = CreateService(ctx);
+        var result = await svc.ListTicketsAsync();
+        Assert.Equal("ok", result.Status);
+        var tickets = (List<object>)result.Data["tickets"];
+        Assert.Empty(tickets);
     }
 }

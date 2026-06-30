@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS Sprints (
                 CHECK (Status IN ('active','closed')),
     StartedAt   TEXT    NOT NULL,
     ClosedAt    TEXT    NULL,
-    CHECK (Id GLOB 'SPRINT-[0-9][0-9][0-9][0-9]')
+    CHECK (Id GLOB 'SPRINT-[0-9][0-9]*')
 );
 
 CREATE TABLE IF NOT EXISTS Tickets (
@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS Tickets (
     UpdatedAt       TEXT    NOT NULL,
     CHECK (length(Id) >= 8 AND Id GLOB 'TKT-[0-9]*')
 );
+CREATE INDEX IF NOT EXISTS IX_Tickets_SprintId ON Tickets(SprintId);
 
 CREATE TABLE IF NOT EXISTS AcceptanceCriteria (
     Id          INTEGER PRIMARY KEY AUTOINCREMENT,

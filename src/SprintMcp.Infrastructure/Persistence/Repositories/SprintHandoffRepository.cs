@@ -6,15 +6,15 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class SprintHandoffRepository(AppDbContext db) : ISprintHandoffRepository
 {
-    public async Task<SprintHandoff?> GetBySprintIdAsync(string sprintId)
+    public async Task<SprintHandoff?> GetBySprintIdAsync(string sprintId, CancellationToken ct = default)
     {
-        return await db.SprintHandoffs.FirstOrDefaultAsync(h => h.SprintId == sprintId);
+        return await db.SprintHandoffs.FirstOrDefaultAsync(h => h.SprintId == sprintId, ct);
     }
 
-    public async Task UpdateAsync(SprintHandoff handoff)
+    public async Task UpsertAsync(SprintHandoff handoff, CancellationToken ct = default)
     {
         handoff.UpdatedAt = DateTime.UtcNow;
-        var existing = await db.SprintHandoffs.FirstOrDefaultAsync(h => h.SprintId == handoff.SprintId);
+        var existing = await db.SprintHandoffs.FirstOrDefaultAsync(h => h.SprintId == handoff.SprintId, ct);
         if (existing is not null)
         {
             existing.CurrentFocus = handoff.CurrentFocus;
@@ -27,6 +27,6 @@ public class SprintHandoffRepository(AppDbContext db) : ISprintHandoffRepository
         {
             db.SprintHandoffs.Add(handoff);
         }
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
     }
 }

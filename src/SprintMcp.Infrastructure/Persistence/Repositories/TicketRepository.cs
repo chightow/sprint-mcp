@@ -7,56 +7,69 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class TicketRepository(AppDbContext db) : ITicketRepository
 {
-    public async Task<Ticket?> GetByIdAsync(string ticketId)
+    private static readonly SemaphoreSlim _idLock = new(1, 1);
+    public async Task<Ticket?> GetByIdAsync(string ticketId, CancellationToken ct = default)
     {
-        return await db.Tickets.FirstOrDefaultAsync(t => t.Id == ticketId);
+        return await db.Tickets.FirstOrDefaultAsync(t => t.Id == ticketId, ct);
     }
 
-    public async Task<List<Ticket>> GetAllAsync()
+    public async Task<List<Ticket>> GetAllAsync(CancellationToken ct = default)
     {
-        return await db.Tickets.OrderBy(t => t.Id).ToListAsync();
+        return await db.Tickets.OrderBy(t => t.Id).ToListAsync(ct);
     }
 
-    public async Task<List<Ticket>> GetBySprintIdAsync(string sprintId)
+    public async Task<List<Ticket>> GetBySprintIdAsync(string sprintId, CancellationToken ct = default)
     {
-        return await db.Tickets.Where(t => t.SprintId == sprintId).OrderBy(t => t.Id).ToListAsync();
+        return await db.Tickets.Where(t => t.SprintId == sprintId).OrderBy(t => t.Id).ToListAsync(ct);
     }
 
-    public async Task<Ticket> CreateAsync(string title, string description)
+    public async Task<Ticket> CreateAsync(string title, string description, CancellationToken ct = default)
     {
-        var nextId = await GetNextIdAsync();
-        var ticket = new Ticket(nextId, title, description);
-        db.Tickets.Add(ticket);
-        await db.SaveChangesAsync();
-        return ticket;
+        await _idLock.WaitAsync(ct);
+        try
+        {
+            var nextId = await GetNextIdAsync(ct);
+            var ticket = new Ticket(nextId, title, description);
+            db.Tickets.Add(ticket);
+            await db.SaveChangesAsync(ct);
+            return ticket;
+        }
+        finally
+        {
+            _idLock.Release();
+        }
     }
 
-    public async Task<Ticket> CreateAsync(string title, string description, Priority priority)
+    public async Task<Ticket> CreateAsync(string title, string description, Priority priority, CancellationToken ct = default)
     {
-        var nextId = await GetNextIdAsync();
-        var ticket = new Ticket(nextId, title, description) { Priority = priority };
-        db.Tickets.Add(ticket);
-        await db.SaveChangesAsync();
-        return ticket;
+        await _idLock.WaitAsync(ct);
+        try
+        {
+            var nextId = await GetNextIdAsync(ct);
+            var ticket = new Ticket(nextId, title, description);
+            ticket.ChangePriority(priority);
+            db.Tickets.Add(ticket);
+            await db.SaveChangesAsync(ct);
+            return ticket;
+        }
+        finally
+        {
+            _idLock.Release();
+        }
     }
 
-    public async Task UpdateAsync(Ticket ticket)
+    public async Task UpdateAsync(Ticket ticket, CancellationToken ct = default)
     {
         ticket.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
     }
 
-    public async Task<string> GetNextIdAsync()
+    public async Task<string> GetNextIdAsync(CancellationToken ct = default)
     {
-        var re = new System.Text.RegularExpressions.Regex(@"^TKT-(\d+)$");
-        ulong maxN = 0;
-        var ids = await db.Tickets.Select(t => t.Id).ToListAsync();
-        foreach (var id in ids)
-        {
-            var m = re.Match(id);
-            if (m.Success && ulong.TryParse(m.Groups[1].Value, out var n) && n > maxN)
-                maxN = n;
-        }
+        var maxN = await db.Database
+            .SqlQueryRaw<long>(
+                "SELECT COALESCE(MAX(CAST(SUBSTR(Id, 5) AS INTEGER)), 0) AS Value FROM Tickets")
+            .FirstOrDefaultAsync(ct);
         return $"TKT-{maxN + 1:D4}";
     }
 }

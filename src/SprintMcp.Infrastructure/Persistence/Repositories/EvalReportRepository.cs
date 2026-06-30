@@ -6,20 +6,20 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class EvalReportRepository(AppDbContext db) : IEvalReportRepository
 {
-    public async Task<EvalReport?> GetByTicketIdAsync(string ticketId)
+    public async Task<EvalReport?> GetByTicketIdAsync(string ticketId, CancellationToken ct = default)
     {
-        return await db.EvalReports.FirstOrDefaultAsync(e => e.TicketId == ticketId);
+        return await db.EvalReports.FirstOrDefaultAsync(e => e.TicketId == ticketId, ct);
     }
 
-    public async Task UpsertAsync(EvalReport report)
+    public async Task UpsertAsync(EvalReport report, CancellationToken ct = default)
     {
-        var existing = await db.EvalReports.FirstOrDefaultAsync(e => e.TicketId == report.TicketId);
+        var existing = await db.EvalReports.FirstOrDefaultAsync(e => e.TicketId == report.TicketId, ct);
         if (existing is not null)
         {
             existing.RunId = report.RunId;
             existing.Verdict = report.Verdict;
             existing.Content = report.Content;
-            if (report.MatchedRunTs is not null) existing.MatchedRunTs = report.MatchedRunTs;
+            existing.MatchedRunTs = report.MatchedRunTs;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else
@@ -27,6 +27,6 @@ public class EvalReportRepository(AppDbContext db) : IEvalReportRepository
             report.UpdatedAt = DateTime.UtcNow;
             db.EvalReports.Add(report);
         }
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
     }
 }

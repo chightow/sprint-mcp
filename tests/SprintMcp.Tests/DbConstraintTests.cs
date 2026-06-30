@@ -34,12 +34,12 @@ public class DbConstraintTests : IDisposable
     }
 
     [Fact]
-    public async Task Ticket_BadTier_Throws()
+    public void Ticket_BadTier_Throws()
     {
         using var ctx = Ctx();
-        ctx.Tickets.Add(new Ticket("TKT-0002", "Test", "Desc") { Tier = "invalid" });
-        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
-        Assert.Contains("CHECK", ex.InnerException?.Message ?? "", StringComparison.OrdinalIgnoreCase);
+        var ex = Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() =>
+            ctx.Database.ExecuteSqlRaw("INSERT INTO Tickets (Id, Title, Description, Status, Priority, Tier, PlanApproach, PlanFiles, Summary, CreatedAt, UpdatedAt) VALUES ('TKT-0002', 'Test', 'Desc', 'open', 'medium', 'invalid', '', '', '', '2024-01-01', '2024-01-01')"));
+        Assert.Contains("CHECK", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -77,12 +77,9 @@ public class DbConstraintTests : IDisposable
         ctx.Tickets.Add(new Ticket("TKT-0020", "Test", "Desc"));
         await ctx.SaveChangesAsync();
 
-        ctx.TestPlanItems.Add(new TestPlanItem
-        {
-            TicketId = "TKT-0020", Ordinal = 1, Description = "Test", Status = "invalid"
-        });
-        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
-        Assert.Contains("CHECK", ex.InnerException?.Message ?? "", StringComparison.OrdinalIgnoreCase);
+        var ex = Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() =>
+            ctx.Database.ExecuteSqlRaw("INSERT INTO TestPlanItems (TicketId, Ordinal, Description, Expected, Status, UpdatedAt) VALUES ('TKT-0020', 1, 'Test', '', 'invalid', '2024-01-01')"));
+        Assert.Contains("CHECK", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -92,30 +89,27 @@ public class DbConstraintTests : IDisposable
         ctx.Tickets.Add(new Ticket("TKT-0030", "Test", "Desc"));
         await ctx.SaveChangesAsync();
 
-        ctx.EvalReports.Add(new EvalReport
-        {
-            TicketId = "TKT-0030", RunId = "run-1", Verdict = "invalid"
-        });
-        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
-        Assert.Contains("CHECK", ex.InnerException?.Message ?? "", StringComparison.OrdinalIgnoreCase);
+        var ex = Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() =>
+            ctx.Database.ExecuteSqlRaw("INSERT INTO EvalReports (TicketId, RunId, Verdict, Content, CreatedAt, UpdatedAt) VALUES ('TKT-0030', 'run-1', 'invalid', '', '2024-01-01', '2024-01-01')"));
+        Assert.Contains("CHECK", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task Sprint_BadStatus_Throws()
+    public void Sprint_BadStatus_Throws()
     {
         using var ctx = Ctx();
-        ctx.Sprints.Add(new Sprint("SPRINT-0001") { Status = "invalid" });
-        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
-        Assert.Contains("CHECK", ex.InnerException?.Message ?? "", StringComparison.OrdinalIgnoreCase);
+        var ex = Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() =>
+            ctx.Database.ExecuteSqlRaw("INSERT INTO Sprints (Id, Status, StartedAt) VALUES ('SPRINT-0001', 'invalid', '2024-01-01')"));
+        Assert.Contains("CHECK", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task Sprint_BadIdFormat_Throws()
+    public void Sprint_BadIdFormat_Throws()
     {
         using var ctx = Ctx();
-        ctx.Sprints.Add(new Sprint("BAD-ID"));
-        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
-        Assert.Contains("CHECK", ex.InnerException?.Message ?? "", StringComparison.OrdinalIgnoreCase);
+        var ex = Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() =>
+            ctx.Database.ExecuteSqlRaw("INSERT INTO Sprints (Id, Status, StartedAt) VALUES ('BAD-ID', 'active', '2024-01-01')"));
+        Assert.Contains("CHECK", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

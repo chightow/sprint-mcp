@@ -7,7 +7,8 @@ using SprintMcp.Infrastructure.Persistence;
 using SprintMcp.Server.Handlers;
 
 var projectRoot = FindProjectRoot(Directory.GetCurrentDirectory());
-var dbPath = Path.Combine(projectRoot, ".tickets", "sprint.db");
+var configuredPath = Environment.GetEnvironmentVariable("SPRINTMCP_DB_PATH");
+var dbPath = configuredPath ?? Path.Combine(projectRoot, ".tickets", "sprint.db");
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -36,10 +37,17 @@ static string FindProjectRoot(string start)
     var d = Path.GetFullPath(start);
     for (var depth = 0; depth < 50; depth++)
     {
-        if (Directory.Exists(Path.Combine(d, ".git")) ||
-            Directory.Exists(Path.Combine(d, ".tickets")))
+        if (Directory.Exists(Path.Combine(d, ".tickets")))
             return d;
-
+        var parent = Path.GetDirectoryName(d);
+        if (parent is null || parent == d) break;
+        d = parent;
+    }
+    d = Path.GetFullPath(start);
+    for (var depth = 0; depth < 50; depth++)
+    {
+        if (Directory.Exists(Path.Combine(d, ".git")))
+            return d;
         var parent = Path.GetDirectoryName(d);
         if (parent is null || parent == d) return start;
         d = parent;

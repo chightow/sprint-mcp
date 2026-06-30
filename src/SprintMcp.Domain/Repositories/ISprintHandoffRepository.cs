@@ -4,6 +4,6 @@ namespace SprintMcp.Domain.Repositories;
 
 public interface ISprintHandoffRepository
 {
-    Task<SprintHandoff?> GetBySprintIdAsync(string sprintId);
-    Task UpdateAsync(SprintHandoff handoff);
+    Task<SprintHandoff?> GetBySprintIdAsync(string sprintId, CancellationToken ct = default);
+    Task UpsertAsync(SprintHandoff handoff, CancellationToken ct = default);
 }

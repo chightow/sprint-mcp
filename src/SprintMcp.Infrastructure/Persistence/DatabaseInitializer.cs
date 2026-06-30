@@ -18,12 +18,7 @@ public static class DatabaseInitializer
         using var reader = new StreamReader(stream);
         var sql = await reader.ReadToEndAsync();
 
-        foreach (var stmt in sql.Split(';', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var trimmed = stmt.Trim();
-            if (trimmed.Length == 0) continue;
-            await db.Database.ExecuteSqlRawAsync(trimmed);
-        }
+        await db.Database.ExecuteSqlRawAsync(sql);
     }
 
     public static void Initialize(AppDbContext db) => InitializeAsync(db).GetAwaiter().GetResult();

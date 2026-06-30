@@ -7,9 +7,9 @@ public class Ticket
     public string Id { get; private set; } = string.Empty;
     public string Title { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
-    public TicketStatus Status { get; set; } = TicketStatus.Open;
-    public Priority Priority { get; set; } = Priority.Medium;
-    public string Tier { get; set; } = "regular";
+    public TicketStatus Status { get; private set; } = TicketStatus.Open;
+    public Priority Priority { get; private set; } = Priority.Medium;
+    public TicketTier Tier { get; set; } = TicketTier.Regular;
     public string? SprintId { get; set; }
     public string PlanApproach { get; set; } = string.Empty;
     public string PlanFiles { get; set; } = string.Empty;
@@ -23,9 +23,10 @@ public class Ticket
     public Ticket(string id, string title, string description)
     {
         _ = new TicketId(id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(title, nameof(title));
         Id = id;
         Title = title;
-        Description = description;
+        Description = description ?? string.Empty;
         CreatedAt = DateTime.UtcNow;
         UpdatedAt = DateTime.UtcNow;
     }
@@ -33,12 +34,15 @@ public class Ticket
     public void ChangeStatus(TicketStatus newStatus)
     {
         Status = newStatus;
-        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void ChangePriority(Priority newPriority)
+    {
+        Priority = newPriority;
     }
 
     public void MarkPlanApproved()
     {
         PlanApprovedAt = DateTime.UtcNow;
-        UpdatedAt = DateTime.UtcNow;
     }
 }

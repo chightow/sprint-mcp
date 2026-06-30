@@ -2,5 +2,5 @@ namespace SprintMcp.Application.Abstractions;
 
 public interface ISubagentRunChecker
 {
-    bool CheckRun(long epoch, string projectRoot);
+    Task<bool> CheckRunAsync(long epoch, string projectRoot, CancellationToken ct = default);
 }

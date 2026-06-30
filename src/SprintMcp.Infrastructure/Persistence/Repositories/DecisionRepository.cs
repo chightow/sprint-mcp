@@ -6,14 +6,14 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class DecisionRepository(AppDbContext db) : IDecisionRepository
 {
-    public async Task<List<Decision>> GetByTicketIdAsync(string ticketId)
+    public async Task<List<Decision>> GetByTicketIdAsync(string ticketId, CancellationToken ct = default)
     {
-        return await db.Decisions.Where(d => d.TicketId == ticketId).OrderBy(d => d.Id).ToListAsync();
+        return await db.Decisions.Where(d => d.TicketId == ticketId).OrderBy(d => d.Id).ToListAsync(ct);
     }
 
-    public async Task AddAsync(Decision decision)
+    public async Task AddAsync(Decision decision, CancellationToken ct = default)
     {
         db.Decisions.Add(decision);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
     }
 }

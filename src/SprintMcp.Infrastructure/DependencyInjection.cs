@@ -12,7 +12,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string dbPath)
     {
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}"));
+            options.UseSqlite($"Data Source={dbPath};Foreign Keys=True;"));
 
         services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<IAcceptanceCriterionRepository, AcceptanceCriterionRepository>();
@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IActiveTaskRepository, ActiveTaskRepository>();
 
         services.AddScoped<ISubagentRunChecker, SubagentRunChecker>();
+        services.AddScoped<ITransactionManager, TransactionManager>();
 
         return services;
     }

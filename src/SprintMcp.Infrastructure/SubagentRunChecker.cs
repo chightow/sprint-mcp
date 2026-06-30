@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using SprintMcp.Application.Abstractions;
 
 namespace SprintMcp.Infrastructure;
@@ -14,23 +15,31 @@ public class SubagentRunChecker : ISubagentRunChecker
     ];
 
     private const int WindowSec = 600;
+    private readonly ILogger<SubagentRunChecker> _logger;
 
-    public bool CheckRun(long epoch, string projectRoot)
+    public SubagentRunChecker(ILogger<SubagentRunChecker> logger)
+    {
+        _logger = logger;
+    }
+
+    public async Task<bool> CheckRunAsync(long epoch, string projectRoot, CancellationToken ct = default)
     {
         foreach (var rel in LogPaths)
         {
-            if (CheckFile(Path.Combine(projectRoot, rel), epoch))
+            if (await CheckFileAsync(Path.Combine(projectRoot, rel), epoch, ct))
                 return true;
         }
+        _logger.LogWarning("Subagent run {Epoch} not found in any log path under {Root}", epoch, projectRoot);
         return false;
     }
 
-    private static bool CheckFile(string path, long runEpoch)
+    private static async Task<bool> CheckFileAsync(string path, long runEpoch, CancellationToken ct = default)
     {
         if (!File.Exists(path))
             return false;
 
-        foreach (var line in File.ReadLines(path))
+        var lines = await File.ReadAllLinesAsync(path, ct);
+        foreach (var line in lines)
         {
             var trimmed = line.Trim();
             if (trimmed.Length == 0) continue;

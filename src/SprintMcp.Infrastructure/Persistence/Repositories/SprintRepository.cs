@@ -1,45 +1,50 @@
 using Microsoft.EntityFrameworkCore;
 using SprintMcp.Domain.Entities;
 using SprintMcp.Domain.Repositories;
+using SprintMcp.Domain.ValueObjects;
 
 namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class SprintRepository(AppDbContext db) : ISprintRepository
 {
-    public async Task<Sprint?> GetActiveAsync()
+    private static readonly SemaphoreSlim _idLock = new(1, 1);
+    public async Task<Sprint?> GetActiveAsync(CancellationToken ct = default)
     {
-        return await db.Sprints.FirstOrDefaultAsync(s => s.Status == "active");
+        return await db.Sprints.FirstOrDefaultAsync(s => s.Status == SprintStatus.Active, ct);
     }
 
-    public async Task<Sprint?> GetByIdAsync(string sprintId)
+    public async Task<Sprint?> GetByIdAsync(string sprintId, CancellationToken ct = default)
     {
-        return await db.Sprints.FirstOrDefaultAsync(s => s.Id == sprintId);
+        return await db.Sprints.FirstOrDefaultAsync(s => s.Id == sprintId, ct);
     }
 
-    public async Task<Sprint> CreateAsync(string id)
+    public async Task<Sprint> CreateAsync(string id, CancellationToken ct = default)
     {
-        var sprint = new Sprint(id);
-        db.Sprints.Add(sprint);
-        await db.SaveChangesAsync();
-        return sprint;
-    }
-
-    public async Task UpdateAsync(Sprint sprint)
-    {
-        await db.SaveChangesAsync();
-    }
-
-    public async Task<string> GetNextIdAsync()
-    {
-        var re = new System.Text.RegularExpressions.Regex(@"^SPRINT-(\d+)$");
-        ulong maxN = 0;
-        var ids = await db.Sprints.Select(s => s.Id).ToListAsync();
-        foreach (var id in ids)
+        await _idLock.WaitAsync(ct);
+        try
         {
-            var m = re.Match(id);
-            if (m.Success && ulong.TryParse(m.Groups[1].Value, out var n) && n > maxN)
-                maxN = n;
+            var sprint = new Sprint(id);
+            db.Sprints.Add(sprint);
+            await db.SaveChangesAsync(ct);
+            return sprint;
         }
+        finally
+        {
+            _idLock.Release();
+        }
+    }
+
+    public async Task UpdateAsync(Sprint sprint, CancellationToken ct = default)
+    {
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<string> GetNextIdAsync(CancellationToken ct = default)
+    {
+        var maxN = await db.Database
+            .SqlQueryRaw<long>(
+                "SELECT COALESCE(MAX(CAST(SUBSTR(Id, 8) AS INTEGER)), 0) AS Value FROM Sprints")
+            .FirstOrDefaultAsync(ct);
         return $"SPRINT-{maxN + 1:D4}";
     }
 }

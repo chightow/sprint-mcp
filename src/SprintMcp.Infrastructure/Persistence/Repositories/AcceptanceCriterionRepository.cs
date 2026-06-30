@@ -6,31 +6,43 @@ namespace SprintMcp.Infrastructure.Persistence.Repositories;
 
 public class AcceptanceCriterionRepository(AppDbContext db) : IAcceptanceCriterionRepository
 {
-    public async Task<List<AcceptanceCriterion>> GetByTicketIdAsync(string ticketId)
+    public async Task<List<AcceptanceCriterion>> GetByTicketIdAsync(string ticketId, CancellationToken ct = default)
     {
         return await db.AcceptanceCriteria
             .Where(c => c.TicketId == ticketId)
             .OrderBy(c => c.Ordinal)
-            .ToListAsync();
+            .ToListAsync(ct);
     }
 
-    public async Task<AcceptanceCriterion> AddAsync(AcceptanceCriterion criterion)
+    public async Task<AcceptanceCriterion?> GetByTicketIdAndIdAsync(string ticketId, int id, CancellationToken ct = default)
+    {
+        return await db.AcceptanceCriteria
+            .FirstOrDefaultAsync(c => c.TicketId == ticketId && c.Id == id, ct);
+    }
+
+    public async Task<AcceptanceCriterion?> GetByTicketIdAndOrdinalAsync(string ticketId, int ordinal, CancellationToken ct = default)
+    {
+        return await db.AcceptanceCriteria
+            .FirstOrDefaultAsync(c => c.TicketId == ticketId && c.Ordinal == ordinal, ct);
+    }
+
+    public async Task<AcceptanceCriterion> AddAsync(AcceptanceCriterion criterion, CancellationToken ct = default)
     {
         db.AcceptanceCriteria.Add(criterion);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         return criterion;
     }
 
-    public async Task UpdateAsync(AcceptanceCriterion criterion)
+    public async Task UpdateAsync(AcceptanceCriterion criterion, CancellationToken ct = default)
     {
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
     }
 
-    public async Task<int> GetNextOrdinalAsync(string ticketId)
+    public async Task<int> GetNextOrdinalAsync(string ticketId, CancellationToken ct = default)
     {
         var maxOrdinal = await db.AcceptanceCriteria
             .Where(c => c.TicketId == ticketId)
-            .MaxAsync(c => (int?)c.Ordinal) ?? 0;
+            .MaxAsync(c => (int?)c.Ordinal, ct) ?? 0;
         return maxOrdinal + 1;
     }
 }
