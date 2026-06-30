@@ -76,7 +76,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", """{"path":"src/main.cs"}""", "ledger:ref1");
+        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", Json("""{"path":"src/main.cs"}"""), "ledger:ref1");
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -93,7 +93,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("FileRead", "TKT-0001", """{"path":"src/spec.md"}""");
+        var result = await handler.ProposeEvent("FileRead", "TKT-0001", Json("""{"path":"src/spec.md"}"""));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -108,7 +108,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", """{"path":"src/main.cs"}""");
+        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", Json("""{"path":"src/main.cs"}"""));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -123,7 +123,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("ToolResult", "TKT-0001", """{"tool":"read_file","is_write":false}""");
+        var result = await handler.ProposeEvent("ToolResult", "TKT-0001", Json("""{"tool":"read_file","is_write":false}"""));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -147,7 +147,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent(eventType, "TKT-0001", """{"protocolId":"proto_abc"}""");
+        var result = await handler.ProposeEvent(eventType, "TKT-0001", Json("""{"protocolId":"proto_abc"}"""));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -168,7 +168,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent(eventType, "TKT-0001", """{"protocolId":"proto_abc"}""");
+        var result = await handler.ProposeEvent(eventType, "TKT-0001", Json("""{"protocolId":"proto_abc"}"""));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -198,7 +198,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("TicketCreated", "TKT-0001", "{}");
+        var result = await handler.ProposeEvent("TicketCreated", "TKT-0001", Json("{}"));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -214,7 +214,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("BogusEvent", "TKT-0001", "{}");
+        var result = await handler.ProposeEvent("BogusEvent", "TKT-0001", Json("{}"));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -230,7 +230,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", """{"path":"src/main.cs"}""");
+        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", Json("""{"path":"src/main.cs"}"""));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -246,27 +246,12 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("ToolResult", "TKT-0001", """{"tool":"write_file","is_write":true}""");
+        var result = await handler.ProposeEvent("ToolResult", "TKT-0001", Json("""{"tool":"write_file","is_write":true}"""));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
         Assert.False(data!.Accepted);
         Assert.Contains(data.RejectionReasons!, r => r.Contains("PhaseGate"));
-    }
-
-    [Fact]
-    public async Task ProposeEvent_InvalidJson_Rejected()
-    {
-        var ctx = CreateContext();
-        var svc = CreateEventService(ctx);
-        var handler = new EventToolHandler(svc);
-
-        var result = await handler.ProposeEvent("FileRead", "TKT-0001", "not json");
-
-        Assert.False(result.IsError);
-        var data = Deserialize<ProposeEventResponse>(result);
-        Assert.False(data!.Accepted);
-        Assert.Contains(data.RejectionReasons!, r => r.Contains("not valid JSON"));
     }
 
     [Fact]
@@ -276,7 +261,7 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", """{"path":"src/main.cs"}""");
+        var result = await handler.ProposeEvent("FileWrite", "TKT-0001", Json("""{"path":"src/main.cs"}"""));
 
         Assert.False(result.IsError);
         var data = Deserialize<ProposeEventResponse>(result);
@@ -295,8 +280,8 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        await handler.ProposeEvent("FileRead", "TKT-0001", """{"path":"a"}""");
-        await handler.ProposeEvent("FileRead", "TKT-0001", """{"path":"b"}""");
+        await handler.ProposeEvent("FileRead", "TKT-0001", Json("""{"path":"a"}"""));
+        await handler.ProposeEvent("FileRead", "TKT-0001", Json("""{"path":"b"}"""));
 
         var result = await handler.ListEvents(since: 0);
 
@@ -315,7 +300,7 @@ public class EventProtocolTests : IAsyncLifetime
         var handler = new EventToolHandler(svc);
 
         for (var i = 0; i < 5; i++)
-            await handler.ProposeEvent("FileRead", "TKT-0001", """{"path":"a"}""");
+            await handler.ProposeEvent("FileRead", "TKT-0001", Json("""{"path":"a"}"""));
 
         var result = await handler.ListEvents(since: 0, take: 2);
 
@@ -332,8 +317,8 @@ public class EventProtocolTests : IAsyncLifetime
         var svc = CreateEventService(ctx);
         var handler = new EventToolHandler(svc);
 
-        await handler.ProposeEvent("FileRead", "TKT-0001", """{"path":"a"}""");
-        await handler.ProposeEvent("GrepSearch", "TKT-0001", """{"pattern":"foo"}""");
+        await handler.ProposeEvent("FileRead", "TKT-0001", Json("""{"path":"a"}"""));
+        await handler.ProposeEvent("GrepSearch", "TKT-0001", Json("""{"pattern":"foo"}"""));
 
         var result = await handler.ListEvents(since: 0, type: "GrepSearch");
 
@@ -489,6 +474,8 @@ public class EventProtocolTests : IAsyncLifetime
     }
 
     #endregion
+
+    private static JsonElement Json(string raw) => JsonDocument.Parse(raw).RootElement;
 
     private static T? Deserialize<T>(CallToolResult result)
     {
