@@ -19,6 +19,7 @@ public partial record TicketId
         Value = value;
     }
 
+    public static void Validate(string value) => _ = new TicketId(value);
     public static TicketId FromString(string value) => new(value);
     public override string ToString() => Value;
 }

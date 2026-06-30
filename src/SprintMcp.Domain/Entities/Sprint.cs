@@ -14,7 +14,7 @@ public class Sprint
 
     public Sprint(string id)
     {
-        _ = new SprintId(id);
+        SprintId.Validate(id);
         Id = id;
         StartedAt = DateTime.UtcNow;
     }

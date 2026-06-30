@@ -11,18 +11,18 @@ public class Ticket
     public Priority Priority { get; private set; } = Priority.Medium;
     public TicketTier Tier { get; private set; } = TicketTier.Regular;
     public string? SprintId { get; private set; }
-    public string PlanApproach { get; set; } = string.Empty;
-    public string PlanFiles { get; set; } = string.Empty;
-    public DateTime? PlanApprovedAt { get; set; }
-    public string Summary { get; set; } = string.Empty;
+    public string PlanApproach { get; private set; } = string.Empty;
+    public string PlanFiles { get; private set; } = string.Empty;
+    public DateTime? PlanApprovedAt { get; private set; }
+    public string Summary { get; private set; } = string.Empty;
     public DateTime CreatedAt { get; private set; }
-    public DateTime UpdatedAt { get; set; }
+    public DateTime UpdatedAt { get; private set; }
 
     private Ticket() { }
 
     public Ticket(string id, string title, string description)
     {
-        _ = new TicketId(id);
+        TicketId.Validate(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(title, nameof(title));
         Id = id;
         Title = title;
@@ -57,9 +57,27 @@ public class Ticket
         UpdatedAt = timestamp;
     }
 
+    public void SetPlanApproach(string approach)
+    {
+        PlanApproach = approach;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetPlanFiles(string files)
+    {
+        PlanFiles = files;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetSummary(string summary)
+    {
+        Summary = summary;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     public void AssignToSprint(string sprintId)
     {
-        _ = new SprintId(sprintId);
+        ValueObjects.SprintId.Validate(sprintId);
         SprintId = sprintId;
         UpdatedAt = DateTime.UtcNow;
     }

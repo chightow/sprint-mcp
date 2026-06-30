@@ -69,11 +69,10 @@ public class SprintService
             var handoff = await _handoffRepo.GetBySprintIdAsync(active.Id, ct)
                 ?? new SprintHandoff(active.Id);
 
-            if (currentFocus is not null) handoff.CurrentFocus = currentFocus;
-            if (inProgress is not null) handoff.InProgress = inProgress;
-            if (discoveries is not null) handoff.Discoveries = discoveries;
-            if (nextSteps is not null) handoff.NextSteps = nextSteps;
-            handoff.UpdatedAt = now;
+            if (currentFocus is not null) handoff.UpdateFocus(currentFocus, now);
+            if (inProgress is not null) handoff.UpdateInProgress(inProgress, now);
+            if (discoveries is not null) handoff.UpdateDiscoveries(discoveries, now);
+            if (nextSteps is not null) handoff.UpdateNextSteps(nextSteps, now);
 
             await _handoffRepo.UpsertAsync(handoff, ct);
 
@@ -330,8 +329,7 @@ public class SprintService
                 if (!await _runChecker.CheckRunAsync(epoch, _projectRoot, ct))
                     return ToolResult.Error($"Ticket {t.Id} cannot close: run-id '{report.RunId}' has no matching subagent entry.");
 
-                report.MatchedRunTs = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime;
-                report.UpdatedAt = now;
+                report.MarkRunMatched(DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime, now);
                 await _evalReportRepo.UpsertAsync(report, ct);
             }
 

@@ -380,10 +380,8 @@ public class SprintServiceTests : IDisposable
         await ticketRepo.UpdateAsync(ticket);
 
         var evalRepo = new EvalReportRepository(ctx);
-        var evalReport = new EvalReport(ticket.Id, "1234567890-test-run", Verdict.Pass, "All good")
-        {
-            MatchedRunTs = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-        };
+        var evalReport = new EvalReport(ticket.Id, "1234567890-test-run", Verdict.Pass, "All good",
+            new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         await evalRepo.UpsertAsync(evalReport);
 
         // Subagent check would return false, but MatchedRunTs already set → skipped

@@ -98,3 +98,4 @@ CREATE TABLE IF NOT EXISTS IdempotencyKeys (
     ResultJson  TEXT    NOT NULL,
     CreatedAt   TEXT    NOT NULL
 );
+CREATE INDEX IF NOT EXISTS IX_IdempotencyKeys_CreatedAt ON IdempotencyKeys(CreatedAt);

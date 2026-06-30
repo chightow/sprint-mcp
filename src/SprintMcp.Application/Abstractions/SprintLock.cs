@@ -4,17 +4,26 @@ public class SprintLock : ISprintLock
 {
     private readonly SemaphoreSlim _mutex = new(1, 1);
     private readonly object _snapshotLock = new();
+    private bool _held;
     private DateTime _lockAcquiredAt = DateTime.MinValue;
 
     public async Task WaitAsync(CancellationToken ct = default)
     {
         await _mutex.WaitAsync(ct);
-        lock (_snapshotLock) { _lockAcquiredAt = DateTime.UtcNow; }
+        lock (_snapshotLock)
+        {
+            _held = true;
+            _lockAcquiredAt = DateTime.UtcNow;
+        }
     }
 
     public void Release()
     {
-        lock (_snapshotLock) { _lockAcquiredAt = DateTime.MinValue; }
+        lock (_snapshotLock)
+        {
+            _held = false;
+            _lockAcquiredAt = DateTime.MinValue;
+        }
         _mutex.Release();
     }
 
@@ -22,7 +31,7 @@ public class SprintLock : ISprintLock
     {
         lock (_snapshotLock)
         {
-            return (_mutex.CurrentCount == 0, _lockAcquiredAt);
+            return (_held, _lockAcquiredAt);
         }
     }
 }

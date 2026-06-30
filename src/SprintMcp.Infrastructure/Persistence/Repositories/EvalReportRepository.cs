@@ -16,8 +16,7 @@ public class EvalReportRepository(AppDbContext db) : IEvalReportRepository
         var existing = await db.EvalReports.FirstOrDefaultAsync(e => e.TicketId == report.TicketId, ct);
         if (existing is not null)
         {
-            existing.Update(report.RunId, report.Verdict, report.Content, report.UpdatedAt);
-            existing.MatchedRunTs = report.MatchedRunTs;
+            existing.Update(report.RunId, report.Verdict, report.Content, report.UpdatedAt, report.MatchedRunTs);
         }
         else
         {

@@ -19,6 +19,7 @@ public partial record SprintId
         Value = value;
     }
 
+    public static void Validate(string value) => _ = new SprintId(value);
     public static SprintId FromString(string value) => new(value);
     public override string ToString() => Value;
 }

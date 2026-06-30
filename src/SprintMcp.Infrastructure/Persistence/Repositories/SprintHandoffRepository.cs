@@ -16,11 +16,10 @@ public class SprintHandoffRepository(AppDbContext db) : ISprintHandoffRepository
         var existing = await db.SprintHandoffs.FirstOrDefaultAsync(h => h.SprintId == handoff.SprintId, ct);
         if (existing is not null)
         {
-            existing.CurrentFocus = handoff.CurrentFocus;
-            existing.InProgress = handoff.InProgress;
-            existing.Discoveries = handoff.Discoveries;
-            existing.NextSteps = handoff.NextSteps;
-            existing.UpdatedAt = handoff.UpdatedAt;
+            existing.UpdateFocus(handoff.CurrentFocus, handoff.UpdatedAt);
+            existing.UpdateInProgress(handoff.InProgress, handoff.UpdatedAt);
+            existing.UpdateDiscoveries(handoff.Discoveries, handoff.UpdatedAt);
+            existing.UpdateNextSteps(handoff.NextSteps, handoff.UpdatedAt);
         }
         else
         {

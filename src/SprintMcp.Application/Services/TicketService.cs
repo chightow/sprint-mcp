@@ -47,7 +47,7 @@ public partial class TicketService
         try { prio = Priority.FromString(priority); }
         catch (ArgumentException ex) { return ToolResult.Error(ex.Message); }
 
-        var (phaseError, active) = await RequirePhaseAsync("planning", ct);
+        var (phaseError, active) = await RequirePhaseAsync(SprintPhase.Planning.Value, ct);
         if (phaseError is not null) return phaseError;
 
         var sprintTickets = await _ctx.TicketRepo.GetBySprintIdAsync(active!.Id, ct);
@@ -77,9 +77,9 @@ public partial class TicketService
         }
     }
 
-    public async Task<ToolResult> ListTicketsAsync(CancellationToken ct = default)
+    public async Task<ToolResult> ListTicketsAsync(int skip = 0, int take = 100, CancellationToken ct = default)
     {
-        var tickets = await _ctx.TicketRepo.GetAllAsync(ct);
+        var tickets = await _ctx.TicketRepo.GetAllAsync(skip, take, ct);
 
         return ToolResult.Ok(new Dictionary<string, object>
         {
@@ -154,7 +154,7 @@ public partial class TicketService
 
     public async Task<ToolResult> UpdateStatusAsync(string ticketId, string newStatus, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync("executing", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -202,7 +202,7 @@ public partial class TicketService
         if (criterionText.Length > FieldLimits.CriterionTextMax)
             return ToolResult.Error($"Criterion text exceeds {FieldLimits.CriterionTextMax} characters");
 
-        var (phaseError, _) = await RequirePhaseAsync("planning", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -236,7 +236,7 @@ public partial class TicketService
 
     public async Task<ToolResult> CheckCriterionAsync(string ticketId, int? criterionId, int? ordinal, bool satisfied = true, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync("executing", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -276,7 +276,7 @@ public partial class TicketService
 
     public async Task<ToolResult> SetPlanAsync(string ticketId, string? tier, string? approach, string? files, bool approve = false, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync("planning", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -298,17 +298,16 @@ public partial class TicketService
             {
                 if (approach.Length > FieldLimits.PlanApproachMax)
                     return ToolResult.Error($"Plan approach exceeds {FieldLimits.PlanApproachMax} characters");
-                ticket.PlanApproach = approach;
+                ticket.SetPlanApproach(approach);
             }
             if (files is not null)
             {
                 if (files.Length > FieldLimits.PlanFilesMax)
                     return ToolResult.Error($"Plan files exceeds {FieldLimits.PlanFilesMax} characters");
-                ticket.PlanFiles = files;
+                ticket.SetPlanFiles(files);
             }
             if (approve) ticket.MarkPlanApproved(_ctx.TimeProvider.GetUtcNow().UtcDateTime);
 
-            ticket.UpdatedAt = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
             await _ctx.TicketRepo.UpdateAsync(ticket, ct);
 
             return ToolResult.Ok(new Dictionary<string, object>
@@ -333,7 +332,7 @@ public partial class TicketService
         if (rationale?.Length > FieldLimits.DecisionRationaleMax)
             return ToolResult.Error($"Decision rationale exceeds {FieldLimits.DecisionRationaleMax} characters");
 
-        var (phaseError, _) = await RequirePhaseAsync("planning", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -365,7 +364,7 @@ public partial class TicketService
 
     public async Task<ToolResult> AddTestAsync(string ticketId, string description, string expected, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync("planning", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Planning.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -401,7 +400,7 @@ public partial class TicketService
 
     public async Task<ToolResult> UpdateTestAsync(string ticketId, int ordinal, string status, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync("executing", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Executing.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -438,7 +437,7 @@ public partial class TicketService
 
     public async Task<ToolResult> SetSummaryAsync(string ticketId, string summary, CancellationToken ct = default)
     {
-        var (phaseError, _) = await RequirePhaseAsync("evaluating", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Evaluating.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -451,8 +450,7 @@ public partial class TicketService
             if (summary?.Length > FieldLimits.SummaryMax)
                 return ToolResult.Error($"Summary exceeds {FieldLimits.SummaryMax} characters");
 
-            ticket.Summary = summary ?? "";
-            ticket.UpdatedAt = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
+            ticket.SetSummary(summary ?? "");
             await _ctx.TicketRepo.UpdateAsync(ticket, ct);
 
             return ToolResult.Ok(new Dictionary<string, object>
@@ -475,7 +473,7 @@ public partial class TicketService
         if (!long.TryParse(parts[0], out var epoch))
             return ToolResult.Error($"Invalid run ID '{runId}': epoch must be numeric");
 
-        var (phaseError, _) = await RequirePhaseAsync("evaluating", ct);
+        var (phaseError, _) = await RequirePhaseAsync(SprintPhase.Evaluating.Value, ct);
         if (phaseError is not null) return phaseError;
 
         await _ctx.TicketLock.WaitAsync(ct);
@@ -500,11 +498,7 @@ public partial class TicketService
 
             var now = _ctx.TimeProvider.GetUtcNow().UtcDateTime;
             var matchedRunTs = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime;
-            var report = new EvalReport(ticketId, runId, parsedVerdict, content ?? "")
-            {
-                MatchedRunTs = matchedRunTs,
-                UpdatedAt = now
-            };
+            var report = new EvalReport(ticketId, runId, parsedVerdict, content ?? "", matchedRunTs, now);
             await _ctx.EvalReportRepo.UpsertAsync(report, ct);
 
             var result = ToolResult.Ok(new Dictionary<string, object>

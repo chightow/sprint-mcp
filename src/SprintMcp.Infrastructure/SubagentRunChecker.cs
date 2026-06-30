@@ -38,30 +38,37 @@ public class SubagentRunChecker : ISubagentRunChecker
         if (!File.Exists(path))
             return false;
 
-        using var reader = new StreamReader(path);
-        while (await reader.ReadLineAsync(ct) is { } line)
+        try
         {
-            var trimmed = line.Trim();
-            if (trimmed.Length == 0) continue;
-
-            try
+            using var reader = new StreamReader(path);
+            while (await reader.ReadLineAsync(ct) is { } line)
             {
-                using var doc = JsonDocument.Parse(trimmed);
-                var ts = doc.RootElement.TryGetProperty("ts", out var tsProp) ? tsProp.GetString() : null;
-                if (ts is null) continue;
+                var trimmed = line.Trim();
+                if (trimmed.Length == 0) continue;
 
-                if (TryParseTimestamp(ts) is { } entryEpoch)
+                try
                 {
-                    var diff = entryEpoch - runEpoch;
-                    if (diff < 0) diff = -diff;
-                    if (diff <= WindowSec)
-                        return true;
+                    using var doc = JsonDocument.Parse(trimmed);
+                    var ts = doc.RootElement.TryGetProperty("ts", out var tsProp) ? tsProp.GetString() : null;
+                    if (ts is null) continue;
+
+                    if (TryParseTimestamp(ts) is { } entryEpoch)
+                    {
+                        var diff = entryEpoch - runEpoch;
+                        if (diff < 0) diff = -diff;
+                        if (diff <= WindowSec)
+                            return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogTrace("Skipping malformed subagent run line: {Error}", ex.Message);
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogTrace("Skipping malformed subagent run line: {Error}", ex.Message);
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Could not read subagent run file {Path}: {Error}", path, ex.Message);
         }
         return false;
     }

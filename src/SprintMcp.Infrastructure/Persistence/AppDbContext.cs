@@ -167,6 +167,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.Key).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.ResultJson).IsRequired().HasColumnType("TEXT");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnType("TEXT");
+            entity.HasIndex(e => e.CreatedAt);
         });
     }
 }

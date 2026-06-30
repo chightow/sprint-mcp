@@ -34,6 +34,8 @@ public class TicketHandler(TicketService ticketService)
         [Description("Eval verdict: pass, fail, pending")] string? verdict = null,
         [Description("Eval content")] string? content = null,
         [Description("Idempotency key to prevent duplicate operations")] string? idempotency_key = null,
+        [Description("Pagination: skip N records (default 0)")] int? skip = null,
+        [Description("Pagination: take N records (default 100)")] int? take = null,
         CancellationToken ct = default)
     {
         try
@@ -42,7 +44,7 @@ public class TicketHandler(TicketService ticketService)
             {
                 "create" => await ticketService.CreateTicketAsync(title ?? "", description ?? "", priority ?? "medium", idempotency_key, ct),
                 "get" => await ticketService.GetTicketAsync(ticket_id ?? "", ct),
-                "list" => await ticketService.ListTicketsAsync(ct),
+                "list" => await ticketService.ListTicketsAsync(skip ?? 0, take ?? 100, ct),
                 "status" => await ticketService.UpdateStatusAsync(ticket_id ?? "", new_status ?? "", ct),
                 "add_criterion" => await ticketService.AddCriterionAsync(ticket_id ?? "", criterion ?? "", idempotency_key, ct),
                 "check_criterion" => await ticketService.CheckCriterionAsync(ticket_id ?? "", criterion_id, ordinal, satisfied ?? true, ct),
