@@ -33,7 +33,7 @@ public class SubagentRunChecker : ISubagentRunChecker
         return false;
     }
 
-    private static async Task<bool> CheckFileAsync(string path, long runEpoch, CancellationToken ct = default)
+    private async Task<bool> CheckFileAsync(string path, long runEpoch, CancellationToken ct = default)
     {
         if (!File.Exists(path))
             return false;
@@ -58,9 +58,9 @@ public class SubagentRunChecker : ISubagentRunChecker
                         return true;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // skip malformed lines
+                _logger.LogTrace("Skipping malformed subagent run line: {Error}", ex.Message);
             }
         }
         return false;

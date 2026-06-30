@@ -343,7 +343,7 @@ public class SprintService
                 await _evalReportRepo.UpsertAsync(report, ct);
             }
 
-            active.Close();
+            active.Close(now);
             await _sprintRepo.UpdateAsync(active, ct);
             _logger.LogInformation("Sprint {SprintId} closed with {TicketCount} tickets", active.Id, tickets.Count);
 

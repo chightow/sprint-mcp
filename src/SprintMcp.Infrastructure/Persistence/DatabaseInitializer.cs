@@ -7,8 +7,6 @@ public static class DatabaseInitializer
 {
     public static async Task InitializeAsync(AppDbContext db)
     {
-        await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;");
-
         var assembly = Assembly.GetExecutingAssembly();
         var resourceName = assembly.GetManifestResourceNames()
             .First(n => n.EndsWith("schema.sql", StringComparison.OrdinalIgnoreCase));

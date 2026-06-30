@@ -24,12 +24,14 @@ public class Sprint
         Phase = Phase.Next();
     }
 
-    public void Close()
+    public void Close(DateTime closedAt)
     {
+        if (!Status.CanTransitionTo(SprintStatus.Closed))
+            throw new InvalidOperationException($"Cannot close sprint from status '{Status}'.");
         if (!Phase.CanTransitionTo(SprintPhase.Complete))
             throw new InvalidOperationException($"Cannot close sprint in phase '{Phase}'. Must be in evaluating phase.");
         Phase = SprintPhase.Complete;
         Status = SprintStatus.Closed;
-        ClosedAt = DateTime.UtcNow;
+        ClosedAt = closedAt;
     }
 }
